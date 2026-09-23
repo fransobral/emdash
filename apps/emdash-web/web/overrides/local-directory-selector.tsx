@@ -1,16 +1,7 @@
 import type { Strategy } from '@core/features/projects/browser/components/add-project-modal/add-project-modal';
 import type { ProjectDirectoryPickerClient } from '@core/features/projects/browser/components/add-project-modal/project-directory-picker';
 import { useOpenModal } from '@core/manifests/browser/modal-api';
-/**
- * Web override for the local project directory selector.
- *
- * The desktop app picks local directories through a native OS dialog, which
- * does not exist in the browser. The web build replaces the dialog-trigger
- * field with a plain path input — the surrounding add-project flow already
- * validates typed paths live via `inspectProjectPath`, so manual entry keeps
- * full validation. The SSH strategy keeps its modal picker (wire-based).
- */
-import { Input } from '@emdash/ui/react/primitives';
+import { DirectoryField as DirectoryFieldPrimitive } from '@emdash/ui/react/primitives';
 
 interface DirectoryFieldProps {
   strategy: Strategy;
@@ -30,42 +21,30 @@ export function DirectoryField({
   path = '',
   getProjectsClient,
   onPathChange,
-  placeholder = '/absolute/path/to/project',
+  placeholder = 'Select a directory',
+  ensureDefaultRoot = false,
 }: DirectoryFieldProps) {
   const openDirectorySelectorModal = useOpenModal('directorySelectorModal');
   const disabled = strategy === 'ssh' && !connectionId;
 
   const handleChooseDirectory = async () => {
-    if (strategy === 'ssh') {
-      if (!connectionId) return;
-      const outcome = await openDirectorySelectorModal({
-        connectionId,
-        initialPath: path || undefined,
-        getProjectsClient,
-      });
-      if (outcome.success) onPathChange(outcome.data.path);
-      return;
-    }
-    /* local strategy: manual path entry (native dialog unavailable in web) */
+    if (strategy === 'ssh' && !connectionId) return;
+    const outcome = await openDirectorySelectorModal({
+      strategy,
+      connectionId,
+      initialPath: path || undefined,
+      ensureDefaultRoot,
+      getProjectsClient,
+    });
+    if (outcome.success) onPathChange(outcome.data.path);
   };
 
-  return strategy === 'ssh' ? (
-    <button
-      type="button"
-      className="w-full text-left"
+  return (
+    <DirectoryFieldPrimitive
+      path={path}
+      placeholder={placeholder}
       disabled={disabled}
       onClick={() => void handleChooseDirectory()}
-    >
-      {path || placeholder}
-    </button>
-  ) : (
-    <Input
-      type="text"
-      value={path}
-      placeholder={placeholder}
-      onChange={(event) => onPathChange(event.currentTarget.value)}
-      spellCheck={false}
-      autoComplete="off"
     />
   );
 }

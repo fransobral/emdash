@@ -34,6 +34,7 @@ export function DirectoryField({
     if (strategy === 'ssh') {
       if (!connectionId) return;
       const outcome = await openDirectorySelectorModal({
+        strategy: 'ssh',
         connectionId,
         initialPath: path || undefined,
         ensureDefaultRoot,
