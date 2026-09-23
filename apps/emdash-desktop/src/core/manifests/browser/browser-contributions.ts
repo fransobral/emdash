@@ -1,5 +1,6 @@
 import { automationsBrowserContributions } from '@core/features/automations/contributions/browser';
 import { conversationsBrowserContributions } from '@core/features/conversations/contributions/browser';
+import { cockpitBrowserContributions } from '@core/features/cockpit/contributions/browser';
 import { devPerfBrowserContributions } from '@core/features/dev-perf/contributions/browser';
 import { editorBrowserContributions } from '@core/features/editor/contributions/browser';
 import { integrationsBrowserContributions } from '@core/features/integrations/contributions/browser';
@@ -14,6 +15,7 @@ import { workbenchBrowserContributions } from '@core/features/workbench/contribu
 
 export const featureViewRuntimes = [
   ...workbenchBrowserContributions.views,
+  ...cockpitBrowserContributions.views,
   ...automationsBrowserContributions.views,
   ...projectsBrowserContributions.views,
   ...settingsBrowserContributions.views,
@@ -21,6 +23,7 @@ export const featureViewRuntimes = [
 ] as const;
 
 export const featureModalDefs = [
+  ...cockpitBrowserContributions.modalDefs,
   ...conversationsBrowserContributions.modalDefs,
   ...devPerfBrowserContributions.modalDefs,
   ...editorBrowserContributions.modalDefs,
