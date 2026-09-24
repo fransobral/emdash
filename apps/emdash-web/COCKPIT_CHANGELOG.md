@@ -103,3 +103,19 @@ curl -H "Authorization: Bearer $EMDASH_WEB_BRIDGE_TOKEN" \
   created. Without it, the shared builder requests a non-Git workspace, matching directory projects.
 - CORS headers are emitted only for loopback origins; bearer authentication is still mandatory.
 - Existing destination files are not overwritten, avoiding symlink races and accidental data loss.
+
+## Web GitHub OAuth
+
+- `apps/emdash-web/server/web-oauth-flow.ts` replaces only the web server's Electron loopback
+  launcher with a public PKCE callback at `/auth/oauth/callback`.
+- `apps/emdash-web/web/overrides/use-account.ts` opens the OAuth popup before invoking the existing
+  account Wire procedure. Token exchange and account persistence remain in the desktop service.
+- `apps/emdash-web/build-server.mjs` and `apps/emdash-web/vite.config.ts` scope both substitutions to
+  the web build; the Electron desktop flow is unchanged.
+- `/auth/oauth/launch` requires the cockpit password session. The callback is protected by a
+  short-lived random OAuth state because `SameSite=Strict` cookies do not return from GitHub.
+- Set `EMDASH_WEB_PUBLIC_URL=https://agents.fransobral.com` in the service environment.
+
+Manual test: sign in to `https://agents.fransobral.com`, open the account or GitHub integration
+screen, select **Sign in with GitHub**, authorize the popup, and confirm that it closes and the
+account status refreshes in Emdash.

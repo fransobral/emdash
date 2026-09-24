@@ -37,6 +37,7 @@ import { startUserEnvCapture } from '@main/lib/userEnv';
 import { createBridgeHandler } from './bridge';
 import { createPasswordAuth } from './password-auth';
 import { createStaticHandler } from './static';
+import { createWebOAuthHandler } from './web-oauth-flow';
 import { attachWireGateway } from './ws-gateway';
 
 const here = resolve(fileURLToPath(import.meta.url), '..');
@@ -135,20 +136,27 @@ async function main(): Promise<void> {
     sessionToken: TOKEN,
     controllers: controllers.controllers,
   });
+  const oauthHandler = createWebOAuthHandler({ isAuthenticated: passwordAuth.isAuthenticated });
   const server = createServer((req, res) => {
+    void handleRequest(req, res);
+  });
+  const handleRequest = async (
+    req: Parameters<typeof oauthHandler>[0],
+    res: Parameters<typeof oauthHandler>[1]
+  ): Promise<void> => {
     if (req.url?.startsWith('/api/bridge/')) {
-      void bridgeHandler(req, res);
+      await bridgeHandler(req, res);
       return;
     }
+    if (await oauthHandler(req, res)) return;
     if (req.url?.startsWith('/auth/')) {
-      void passwordAuth.handle(req, res);
-      return;
+      if (await passwordAuth.handle(req, res)) return;
     }
     if (passwordAuth.requireAuthentication(req, res)) return;
     if (staticHandler(req, res)) return;
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     res.end('Not found');
-  });
+  };
 
   attachWireGateway(server, {
     token: TOKEN,
