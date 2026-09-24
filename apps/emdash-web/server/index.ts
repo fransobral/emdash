@@ -123,7 +123,7 @@ async function main(): Promise<void> {
   });
 
   try {
-    await bootBackground(services, runtimes);
+    await bootBackground(services, runtimes, { updater: false });
   } catch (error) {
     console.warn('[emdash-web] background tasks failed to start:', error);
   }
