@@ -27,6 +27,7 @@ const distDir = join(here, 'dist');
 
 const ALIASES = {
   electron: join(here, 'server/shim/electron.ts'),
+  '@main/bootstrap/boot/phases/updater': join(here, 'server/shim/updater.ts'),
   '@core': join(desktopRoot, 'src/core'),
   '@main': join(desktopRoot, 'src/main'),
   '@renderer': join(desktopRoot, 'src/renderer'),
