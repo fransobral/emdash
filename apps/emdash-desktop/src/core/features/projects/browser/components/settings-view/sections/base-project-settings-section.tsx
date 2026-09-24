@@ -22,7 +22,7 @@ import type { ProvenanceFlavor } from '@core/features/projects/contributions/bro
 import { ProjectBranchSelector } from '@core/features/source-control/contributions/browser/project-branch-selector';
 import { RemoteSelector } from '@core/features/source-control/contributions/browser/remote-selector';
 import { getHostClient } from '@core/primitives/desktop-host/browser/host-client';
-import { detectPlatformContext } from '@core/primitives/keybindings/api';
+import { useHostPlatform } from '@core/primitives/desktop-host/browser/use-host-platform';
 import type {
   AgentGitCredentialsSetting,
   Provenance,
@@ -155,7 +155,8 @@ export const BaseProjectSettingsSection = observer(function BaseProjectSettingsS
     hostTmux: placement.layers.hostTmux,
     appDefaultTmux: placement.layers.appDefaultTmux,
   });
-  const tmuxSupported = projectType !== 'local' || detectPlatformContext().os !== 'windows';
+  const hostPlatform = useHostPlatform();
+  const tmuxSupported = projectType !== 'local' || hostPlatform !== 'win32';
   const derivedPoolPath =
     projectPath !== null && effectiveWorktreeRoot !== null
       ? deriveWorktreePoolPath({ worktreeRoot: effectiveWorktreeRoot, repoPath: projectPath })

@@ -3,7 +3,7 @@ import { Info } from 'lucide-react';
 import React from 'react';
 import { useAppSettingsKey } from '@core/features/settings/api/browser/use-app-settings-key';
 import { useTaskSettings } from '@core/features/tasks/api/browser/hooks/useTaskSettings';
-import { detectPlatformContext } from '@core/primitives/keybindings/api';
+import { useHostPlatform } from '@core/primitives/desktop-host/browser/use-host-platform';
 import { ResetToDefaultButton } from './ResetToDefaultButton';
 import { SettingRow } from './SettingRow';
 
@@ -229,7 +229,7 @@ export const EnableTmuxRow: React.FC = () => {
   } = useAppSettingsKey('project');
 
   const tmuxByDefault = projects?.tmuxByDefault ?? false;
-  const tmuxSupported = detectPlatformContext().os !== 'windows';
+  const tmuxSupported = useHostPlatform() !== 'win32';
 
   return (
     <SettingRow
