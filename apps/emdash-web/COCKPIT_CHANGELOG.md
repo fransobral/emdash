@@ -104,18 +104,13 @@ curl -H "Authorization: Bearer $EMDASH_WEB_BRIDGE_TOKEN" \
 - CORS headers are emitted only for loopback origins; bearer authentication is still mandatory.
 - Existing destination files are not overwritten, avoiding symlink races and accidental data loss.
 
-## Web GitHub OAuth
+## Web GitHub authentication
 
-- `apps/emdash-web/server/web-oauth-flow.ts` replaces only the web server's Electron loopback
-  launcher with a public PKCE callback at `/auth/oauth/callback`.
-- `apps/emdash-web/web/overrides/use-account.ts` opens the OAuth popup before invoking the existing
-  account Wire procedure. Token exchange and account persistence remain in the desktop service.
-- `apps/emdash-web/build-server.mjs` and `apps/emdash-web/vite.config.ts` scope both substitutions to
-  the web build; the Electron desktop flow is unchanged.
-- `/auth/oauth/launch` requires the cockpit password session. The callback is protected by a
-  short-lived random OAuth state because `SameSite=Strict` cookies do not return from GitHub.
-- Set `EMDASH_WEB_PUBLIC_URL=https://agents.fransobral.com` in the service environment.
+- The public web UI presents GitHub's device flow as **Sign in with GitHub**. It registers the
+  provider account through the existing GitHub Wire service and works without a browser callback.
+- The Emdash account OAuth card remains Electron-only because `auth.emdash.sh` intentionally accepts
+  loopback redirect URIs only. The desktop OAuth implementation is unchanged.
 
-Manual test: sign in to `https://agents.fransobral.com`, open the account or GitHub integration
-screen, select **Sign in with GitHub**, authorize the popup, and confirm that it closes and the
-account status refreshes in Emdash.
+Manual test: sign in to `https://agents.fransobral.com`, open the GitHub integration, select
+**Sign in with GitHub**, follow the displayed one-time-code instructions, and confirm the account
+appears in Emdash.

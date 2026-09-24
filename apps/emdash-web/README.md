@@ -62,7 +62,6 @@ Configuration via environment variables:
 | `EMDASH_WEB_TOKEN` | random, printed | Access token (set it, or it changes every restart) |
 | `EMDASH_WEB_BRIDGE_TOKEN` | none | Bearer token for the Hermes HTTP control and upload API |
 | `EMDASH_WEB_PASSWORD` | none | Password gate for the web UI (secure session cookie) |
-| `EMDASH_WEB_PUBLIC_URL` | none | Public HTTPS origin used by browser OAuth callbacks (for example `https://agents.example.com`) |
 | `EMDASH_WEB_UPLOAD_MAX_MB` | `200` | Maximum size of each uploaded file |
 | `EMDASH_WEB_DATA_DIR` | `~/.emdash-web` | User-data directory (SQLite, logs, secret key) |
 | `EMDASH_WEB_ALLOW_INSECURE_REMOTE` | unset | Set to `1` to allow non-loopback binds without TLS — the token travels in plaintext, so front the server with a TLS-terminating proxy unless the network is trusted |
@@ -92,7 +91,8 @@ snapshots, and project creation.
 - ⚠️ Desktop-only surfaces are stubbed: OS dialogs (directory picker, save
   file), clipboard writes, tray/menu, auto-update, and the Electron-webview
   in-app browser
-- ✅ Account OAuth uses a PKCE callback on `EMDASH_WEB_PUBLIC_URL`; desktop keeps its loopback flow
+- Account OAuth remains desktop-only because the Emdash auth server requires a loopback callback.
+  GitHub authentication in web uses the supported device flow instead.
 
 ## Layout
 

@@ -29,10 +29,6 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), localDirectorySelectorOverride],
   resolve: {
     alias: {
-      '@core/features/account/api/browser/useAccount': resolve(
-        __dirname,
-        'web/overrides/use-account.ts'
-      ),
       '@': resolve(desktopRoot, 'src'),
       '@core': resolve(desktopRoot, 'src/core'),
       '@renderer': resolve(desktopRoot, 'src/renderer'),

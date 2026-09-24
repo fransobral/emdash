@@ -27,7 +27,6 @@ const distDir = join(here, 'dist');
 
 const ALIASES = {
   electron: join(here, 'server/shim/electron.ts'),
-  '@main/core/shared/oauth-flow': join(here, 'server/web-oauth-flow.ts'),
   '@core': join(desktopRoot, 'src/core'),
   '@main': join(desktopRoot, 'src/main'),
   '@renderer': join(desktopRoot, 'src/renderer'),
