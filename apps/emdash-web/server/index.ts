@@ -129,6 +129,7 @@ async function main(): Promise<void> {
   const staticHandler = createStaticHandler(join(here, 'web'));
   const bridgeHandler = createBridgeHandler({
     token: BRIDGE_TOKEN,
+    sessionToken: TOKEN,
     controllers: controllers.controllers,
   });
   const server = createServer((req, res) => {

@@ -11,8 +11,15 @@ import { encodeTopic, type Controller, type LiveSource } from '@emdash/wire/rpc'
 
 type BridgeOptions = {
   token: string;
+  /** Same-origin session token (EMDASH_WEB_TOKEN); lets the already-authenticated web UI call the bridge without a second token. */
+  sessionToken?: string;
   controllers: Record<string, Controller>;
 };
+
+function bearerFromHeader(header: string | undefined): string | null {
+  if (!header?.startsWith('Bearer ')) return null;
+  return header.slice('Bearer '.length);
+}
 
 type UploadedFile = { name: string; path: string; sizeBytes: number };
 const GENERAL_UPLOAD_ROOT = '/home/ubuntu/uploads';
@@ -38,7 +45,8 @@ export function createBridgeHandler(options: BridgeOptions) {
       res.end();
       return true;
     }
-    if (req.headers.authorization !== `Bearer ${options.token}`) {
+    const provided = bearerFromHeader(req.headers.authorization);
+    if (provided !== options.token && provided !== options.sessionToken) {
       json(res, 401, { error: 'unauthorized' });
       return true;
     }

@@ -9,12 +9,16 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 
 type UploadEntry = { name: string; path: string; sizeBytes: number };
 const BRIDGE_TOKEN_KEY = 'emdash-web-bridge-token';
+const SESSION_TOKEN_KEY = 'emdash-web-token';
 
 export const FilesMainPanel = observer(function FilesMainPanel() {
   const projects = [...getProjectManagerStore().projects.values()].filter(
     (project) => project.data?.type === 'local'
   );
-  const [token, setToken] = useState(() => localStorage.getItem(BRIDGE_TOKEN_KEY) ?? '');
+  const [sessionToken] = useState(() => localStorage.getItem(SESSION_TOKEN_KEY));
+  const [token, setToken] = useState(
+    () => localStorage.getItem(BRIDGE_TOKEN_KEY) ?? localStorage.getItem(SESSION_TOKEN_KEY) ?? ''
+  );
   const [destType, setDestType] = useState<'general' | 'project'>('general');
   const [projectId, setProjectId] = useState(projects[0]?.id ?? '');
   const [subPath, setSubPath] = useState('');
@@ -78,15 +82,17 @@ export const FilesMainPanel = observer(function FilesMainPanel() {
           </p>
         </header>
         <div className="grid gap-4 rounded-lg border border-border bg-background-1 p-4 sm:grid-cols-2">
-          <Field.Root>
-            <Field.Label>Token del bridge</Field.Label>
-            <Input
-              type="password"
-              value={token}
-              onChange={(event) => setToken(event.currentTarget.value)}
-              onBlur={() => localStorage.setItem(BRIDGE_TOKEN_KEY, token)}
-            />
-          </Field.Root>
+          {!sessionToken && (
+            <Field.Root>
+              <Field.Label>Token del bridge</Field.Label>
+              <Input
+                type="password"
+                value={token}
+                onChange={(event) => setToken(event.currentTarget.value)}
+                onBlur={() => localStorage.setItem(BRIDGE_TOKEN_KEY, token)}
+              />
+            </Field.Root>
+          )}
           <Field.Root>
             <Field.Label>Destino</Field.Label>
             <Select.Root
