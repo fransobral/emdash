@@ -1,5 +1,8 @@
-import { buildWorkspaceConfigFromPreset, type WorkspaceConfig } from '@core/primitives/workspaces/api';
 import type { CreateTaskParams, TaskConfig } from '@core/primitives/tasks/api';
+import {
+  buildWorkspaceConfigFromPreset,
+  type WorkspaceConfig,
+} from '@core/primitives/workspaces/api';
 
 export type BuildCreateTaskParamsInput = {
   id?: string;
@@ -10,6 +13,7 @@ export type BuildCreateTaskParamsInput = {
   name?: string;
   baseBranch?: string;
   agentAutoApprove?: boolean;
+  repositoryWorkspaceId?: string;
   workspaceConfig?: WorkspaceConfig;
   taskConfig?: Partial<Omit<TaskConfig, 'version' | 'name'>>;
 };
@@ -46,7 +50,9 @@ export function buildCreateTaskParams(input: BuildCreateTaskParamsInput): Create
       : {
           version: '2',
           git: { kind: 'none' },
-          workspace: { kind: 'new-worktree' },
+          workspace: input.repositoryWorkspaceId
+            ? { kind: 'repository-instance', workspaceId: input.repositoryWorkspaceId }
+            : { kind: 'new-worktree' },
         });
 
   return { id, projectId: input.projectId, taskConfig, workspaceConfig };

@@ -60,6 +60,8 @@ Configuration via environment variables:
 | `EMDASH_WEB_PORT` | `4200` | Listen port |
 | `EMDASH_WEB_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` for LAN access) |
 | `EMDASH_WEB_TOKEN` | random, printed | Access token (set it, or it changes every restart) |
+| `EMDASH_WEB_BRIDGE_TOKEN` | none | Bearer token for the Hermes HTTP control and upload API |
+| `EMDASH_WEB_UPLOAD_MAX_MB` | `200` | Maximum size of each uploaded file |
 | `EMDASH_WEB_DATA_DIR` | `~/.emdash-web` | User-data directory (SQLite, logs, secret key) |
 | `EMDASH_WEB_ALLOW_INSECURE_REMOTE` | unset | Set to `1` to allow non-loopback binds without TLS — the token travels in plaintext, so front the server with a TLS-terminating proxy unless the network is trusted |
 

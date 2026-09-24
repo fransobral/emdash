@@ -34,8 +34,8 @@ import { acpAgentStatusBridge } from '@main/core/acp/agent-status-bridge';
 import { setAgentStatusConversationEventPublisher } from '@main/core/agent-status/agent-status-service';
 import { tuiAgentStatusBridge } from '@main/core/agent-status/tui-agent-status-bridge';
 import { startUserEnvCapture } from '@main/lib/userEnv';
-import { createStaticHandler } from './static';
 import { createBridgeHandler } from './bridge';
+import { createStaticHandler } from './static';
 import { attachWireGateway } from './ws-gateway';
 
 const here = resolve(fileURLToPath(import.meta.url), '..');

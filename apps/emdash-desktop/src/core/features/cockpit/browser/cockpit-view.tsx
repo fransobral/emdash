@@ -1,14 +1,14 @@
+import { cockpitViewDef } from '@core/features/cockpit/contributions/views';
+import { getProjectManagerStore } from '@core/features/projects/api/browser/stores/project-selectors';
+import { getTaskManagerStore } from '@core/features/tasks/api/browser/task-state/task-selectors';
+import { Titlebar } from '@core/features/workbench/contributions/browser/Titlebar';
+import { registeredTaskData } from '@core/primitives/task-state/browser/task-state';
+import { defineViewRuntime } from '@core/primitives/views/react';
 import { EmptyState } from '@emdash/ui/react/components';
 import { Badge } from '@emdash/ui/react/primitives';
 import { Activity, Bot } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { Fragment } from 'react';
-import { getProjectManagerStore } from '@core/features/projects/api/browser/stores/project-selectors';
-import { getTaskManagerStore } from '@core/features/tasks/api/browser/task-state/task-selectors';
-import { cockpitViewDef } from '@core/features/cockpit/contributions/views';
-import { Titlebar } from '@core/features/workbench/contributions/browser/Titlebar';
-import { registeredTaskData } from '@core/primitives/task-state/browser/task-state';
-import { defineViewRuntime } from '@core/primitives/views/react';
 
 export const CockpitMainPanel = observer(function CockpitMainPanel() {
   const projects = [...getProjectManagerStore().projects.values()];
