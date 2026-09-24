@@ -14,7 +14,9 @@ if (!url) {
   process.exit(1);
 }
 
-const ws = new WebSocket(url);
+const ws = new WebSocket(url, {
+  headers: process.env.EMDASH_WEB_COOKIE ? { Cookie: process.env.EMDASH_WEB_COOKIE } : undefined,
+});
 ws.binaryType = 'nodebuffer';
 
 const dataListeners = new Set();
@@ -22,7 +24,8 @@ const closeListeners = new Set();
 ws.on('message', (chunk) => {
   for (const listener of dataListeners) listener(chunk);
 });
-ws.on('close', () => {
+ws.on('close', (code, reason) => {
+  console.error(`WebSocket closed (${code}): ${reason.toString() || 'no reason'}`);
   for (const listener of closeListeners) listener();
 });
 
@@ -71,23 +74,25 @@ try {
 }
 
 // Full write path: create a local project (wire → controller → SQLite → live update).
-const projectPath = process.argv[3] ?? '/home/panjinhui/code/SkillBridge';
-try {
-  const created = await connection.call(
-    'projects.createProject',
-    { type: 'local', path: projectPath, name: 'SkillBridge' },
-    { timeoutMs: 60_000 }
-  );
-  console.log('✓ projects.createProject →', JSON.stringify(created).slice(0, 300));
-  const after = await connection.snapshot('projects.projectList.list');
-  const data = JSON.stringify(after);
-  console.log(
-    data.includes('SkillBridge')
-      ? '✓ project appears in live project list'
-      : `ℹ project list after create: ${data.slice(0, 300)}`
-  );
-} catch (error) {
-  console.log('ℹ createProject:', error instanceof Error ? error.message : error);
+const projectPath = process.argv[3];
+if (projectPath) {
+  try {
+    const created = await connection.call(
+      'projects.createProject',
+      { type: 'local', path: projectPath, name: 'SkillBridge' },
+      { timeoutMs: 60_000 }
+    );
+    console.log('✓ projects.createProject →', JSON.stringify(created).slice(0, 300));
+    const after = await connection.snapshot('projects.projectList.list');
+    const data = JSON.stringify(after);
+    console.log(
+      data.includes('SkillBridge')
+        ? '✓ project appears in live project list'
+        : `ℹ project list after create: ${data.slice(0, 300)}`
+    );
+  } catch (error) {
+    console.log('ℹ createProject:', error instanceof Error ? error.message : error);
+  }
 }
 
 ws.close();

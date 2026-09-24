@@ -114,3 +114,14 @@ curl -H "Authorization: Bearer $EMDASH_WEB_BRIDGE_TOKEN" \
 Manual test: sign in to `https://agents.fransobral.com`, open the GitHub integration, select
 **Sign in with GitHub**, follow the displayed one-time-code instructions, and confirm the account
 appears in Emdash.
+
+## End-to-end hardening
+
+- The web worker build preserves a usable file URL in CommonJS bundles, allowing Codex and Claude
+  ACP adapters to resolve their packaged assets instead of receiving an undefined path.
+- Bridge task creation now attaches the initial ACP conversation and delivers the initial prompt;
+  the prompt endpoint attaches a lazy conversation when necessary and reports delivery failures.
+- Worker IPC send errors during shutdown are observed instead of crashing the Node host with an
+  unhandled `EPIPE` or `ERR_IPC_CHANNEL_CLOSED` event.
+- `scripts/smoke.mjs` accepts `EMDASH_WEB_COOKIE` for password-protected WSS testing and performs no
+  project write unless a project path is explicitly supplied.

@@ -13,6 +13,8 @@ export type BuildCreateTaskParamsInput = {
   name?: string;
   baseBranch?: string;
   agentAutoApprove?: boolean;
+  /** Headless callers can attach first, then deliver the prompt explicitly. */
+  deferInitialPrompt?: boolean;
   repositoryWorkspaceId?: string;
   workspaceConfig?: WorkspaceConfig;
   taskConfig?: Partial<Omit<TaskConfig, 'version' | 'name'>>;
@@ -32,7 +34,7 @@ export function buildCreateTaskParams(input: BuildCreateTaskParamsInput): Create
       provider,
       title: `${provider} 1`,
       type: 'acp',
-      initialQueue: [{ text: input.prompt }],
+      initialQueue: input.deferInitialPrompt ? undefined : [{ text: input.prompt }],
       autoApprove: input.agentAutoApprove,
       model: input.model,
     },

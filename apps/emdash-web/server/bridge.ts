@@ -71,6 +71,7 @@ export function createBridgeHandler(options: BridgeOptions) {
         if (!project) throw new HttpError(404, 'project not found');
         const params = buildCreateTaskParams({
           ...input,
+          deferInitialPrompt: true,
           repositoryWorkspaceId: project.repositoryWorkspaceId ?? undefined,
         });
         const result = (await controller(options.controllers, 'tasks').call(
@@ -82,9 +83,25 @@ export function createBridgeHandler(options: BridgeOptions) {
           json(res, 422, { error: result.error ?? 'task creation failed' });
           return true;
         }
+        const conversationId = result.data.initialConversation?.id ?? null;
+        let startError: unknown;
+        if (conversationId) {
+          const attached = await attachAcpConversation(options.controllers, conversationId);
+          if (!attached.success) {
+            startError = attached.error;
+          } else {
+            const delivered = await sendAcpPrompt(
+              options.controllers,
+              conversationId,
+              input.prompt
+            );
+            if (!delivered.success) startError = delivered.error;
+          }
+        }
         json(res, 201, {
           taskId: result.data.task.id,
-          conversationId: result.data.initialConversation?.id ?? null,
+          conversationId,
+          ...(startError ? { startError } : {}),
         });
         return true;
       }
@@ -120,7 +137,8 @@ export function createBridgeHandler(options: BridgeOptions) {
         if (conversation.type !== 'acp') {
           throw new HttpError(409, 'prompt bridge currently requires an ACP conversation');
         }
-        const result = await controller(options.controllers, 'conversations').call(
+        const conversationsController = controller(options.controllers, 'conversations');
+        let result = (await conversationsController.call(
           'acp.sendPrompt',
           {
             conversationId: conversation.id,
@@ -129,7 +147,28 @@ export function createBridgeHandler(options: BridgeOptions) {
             placement: 'auto',
           },
           {}
-        );
+        )) as { success: boolean; error?: unknown };
+        if (!result.success && isConversationNotFound(result.error)) {
+          const attached = await attachAcpConversation(options.controllers, conversation.id);
+          if (!attached.success) {
+            json(res, 409, { error: attached.error });
+            return true;
+          }
+          result = (await conversationsController.call(
+            'acp.sendPrompt',
+            {
+              conversationId: conversation.id,
+              promptId: crypto.randomUUID(),
+              prompt: { text: body.prompt },
+              placement: 'auto',
+            },
+            {}
+          )) as { success: boolean; error?: unknown };
+        }
+        if (!result.success) {
+          json(res, 409, { error: result.error ?? 'prompt delivery failed' });
+          return true;
+        }
         json(res, 202, { conversationId: conversation.id, result });
         return true;
       }
@@ -143,6 +182,43 @@ export function createBridgeHandler(options: BridgeOptions) {
       return true;
     }
   };
+}
+
+async function attachAcpConversation(
+  controllers: Record<string, Controller>,
+  conversationId: string
+): Promise<{ success: boolean; error?: unknown }> {
+  return (await controller(controllers, 'conversations').call(
+    'acp.attach',
+    { conversationId },
+    {}
+  )) as { success: boolean; error?: unknown };
+}
+
+async function sendAcpPrompt(
+  controllers: Record<string, Controller>,
+  conversationId: string,
+  prompt: string
+): Promise<{ success: boolean; error?: unknown }> {
+  return (await controller(controllers, 'conversations').call(
+    'acp.sendPrompt',
+    {
+      conversationId,
+      promptId: crypto.randomUUID(),
+      prompt: { text: prompt },
+      placement: 'auto',
+    },
+    {}
+  )) as { success: boolean; error?: unknown };
+}
+
+function isConversationNotFound(error: unknown): boolean {
+  return (
+    !!error &&
+    typeof error === 'object' &&
+    'type' in error &&
+    error.type === 'conversation_not_found'
+  );
 }
 
 async function receiveUpload(

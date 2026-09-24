@@ -197,9 +197,13 @@ async function main() {
     alias: ALIASES,
     define: {
       'import.meta.env': '{"DEV":false,"PROD":true,"MODE":"production"}',
+      'import.meta.url': '__emdashWorkerImportMetaUrl',
     },
     external: EXTERNAL,
     plugins: [assetQueryPlugin, coreHashImportsPlugin, importMetaGlobPlugin],
+    banner: {
+      js: 'const __emdashWorkerImportMetaUrl = require("node:url").pathToFileURL(__filename).href;',
+    },
     sourcemap: false,
     legalComments: 'none',
     logLevel: 'info',
