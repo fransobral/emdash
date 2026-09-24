@@ -34,7 +34,11 @@ export function createPasswordAuth(options: { password: string; secret: string }
     if (url.pathname === '/auth/login' && req.method === 'POST') {
       const client = clientAddress(req);
       const failure = failures.get(client);
-      if (failure && Date.now() - failure.startedAt < FAILURE_WINDOW_MS && failure.count >= MAX_FAILURES) {
+      if (
+        failure &&
+        Date.now() - failure.startedAt < FAILURE_WINDOW_MS &&
+        failure.count >= MAX_FAILURES
+      ) {
         renderLogin(res, 429, 'Demasiados intentos. Esperá 15 minutos.');
         return true;
       }
@@ -105,9 +109,11 @@ function readCookie(header: string | undefined, name: string): string | null {
 
 function clientAddress(req: IncomingMessage): string {
   const cloudflareAddress = req.headers['cf-connecting-ip'];
-  return (Array.isArray(cloudflareAddress) ? cloudflareAddress[0] : cloudflareAddress) ??
+  return (
+    (Array.isArray(cloudflareAddress) ? cloudflareAddress[0] : cloudflareAddress) ??
     req.socket.remoteAddress ??
-    'unknown';
+    'unknown'
+  );
 }
 
 function recordFailure(failures: Map<string, FailureWindow>, client: string): void {
@@ -123,7 +129,8 @@ function renderLogin(res: ServerResponse, status: number, error?: string): void 
   res.writeHead(status, {
     'content-type': 'text/html; charset=utf-8',
     'cache-control': 'no-store',
-    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    'content-security-policy':
+      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
     'x-content-type-options': 'nosniff',
     'x-frame-options': 'DENY',
   });

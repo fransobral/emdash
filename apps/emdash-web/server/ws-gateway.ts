@@ -102,7 +102,11 @@ export function attachWireGateway(
       return;
     }
     const token = searchParams.get('token');
-    if (!options.token || token !== options.token || options.authorizeRequest?.(request) === false) {
+    if (
+      !options.token ||
+      token !== options.token ||
+      options.authorizeRequest?.(request) === false
+    ) {
       // Complete the upgrade, then close with a custom code: browsers cannot
       // observe pre-upgrade HTTP status on WebSocket failures, but they do
       // surface post-upgrade close codes — the client treats 4401 as a
