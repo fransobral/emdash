@@ -35,6 +35,7 @@ import { setAgentStatusConversationEventPublisher } from '@main/core/agent-statu
 import { tuiAgentStatusBridge } from '@main/core/agent-status/tui-agent-status-bridge';
 import { startUserEnvCapture } from '@main/lib/userEnv';
 import { createBridgeHandler } from './bridge';
+import { createPasswordAuth } from './password-auth';
 import { createStaticHandler } from './static';
 import { attachWireGateway } from './ws-gateway';
 
@@ -44,6 +45,7 @@ const PORT = Number(process.env.EMDASH_WEB_PORT ?? 4200);
 const HOST = process.env.EMDASH_WEB_HOST ?? '127.0.0.1';
 const TOKEN = process.env.EMDASH_WEB_TOKEN ?? randomBytes(24).toString('base64url');
 const BRIDGE_TOKEN = process.env.EMDASH_WEB_BRIDGE_TOKEN ?? '';
+const PASSWORD = process.env.EMDASH_WEB_PASSWORD ?? '';
 const DATA_DIR = resolve(process.env.EMDASH_WEB_DATA_DIR ?? join(homedir(), '.emdash-web'));
 
 async function main(): Promise<void> {
@@ -127,6 +129,7 @@ async function main(): Promise<void> {
   }
 
   const staticHandler = createStaticHandler(join(here, 'web'));
+  const passwordAuth = createPasswordAuth({ password: PASSWORD, secret: TOKEN });
   const bridgeHandler = createBridgeHandler({
     token: BRIDGE_TOKEN,
     sessionToken: TOKEN,
@@ -137,12 +140,21 @@ async function main(): Promise<void> {
       void bridgeHandler(req, res);
       return;
     }
+    if (req.url?.startsWith('/auth/')) {
+      void passwordAuth.handle(req, res);
+      return;
+    }
+    if (passwordAuth.requireAuthentication(req, res)) return;
     if (staticHandler(req, res)) return;
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     res.end('Not found');
   });
 
-  attachWireGateway(server, { token: TOKEN, controllers: controllers.controllers });
+  attachWireGateway(server, {
+    token: TOKEN,
+    controllers: controllers.controllers,
+    authorizeRequest: passwordAuth.isAuthenticated,
+  });
 
   server.listen(PORT, HOST, () => {
     const displayHost = HOST === '0.0.0.0' ? '<machine-ip>' : HOST;
