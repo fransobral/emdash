@@ -35,6 +35,7 @@ import { setAgentStatusConversationEventPublisher } from '@main/core/agent-statu
 import { tuiAgentStatusBridge } from '@main/core/agent-status/tui-agent-status-bridge';
 import { startUserEnvCapture } from '@main/lib/userEnv';
 import { createStaticHandler } from './static';
+import { createBridgeHandler } from './bridge';
 import { attachWireGateway } from './ws-gateway';
 
 const here = resolve(fileURLToPath(import.meta.url), '..');
@@ -42,6 +43,7 @@ const here = resolve(fileURLToPath(import.meta.url), '..');
 const PORT = Number(process.env.EMDASH_WEB_PORT ?? 4200);
 const HOST = process.env.EMDASH_WEB_HOST ?? '127.0.0.1';
 const TOKEN = process.env.EMDASH_WEB_TOKEN ?? randomBytes(24).toString('base64url');
+const BRIDGE_TOKEN = process.env.EMDASH_WEB_BRIDGE_TOKEN ?? '';
 const DATA_DIR = resolve(process.env.EMDASH_WEB_DATA_DIR ?? join(homedir(), '.emdash-web'));
 
 async function main(): Promise<void> {
@@ -125,7 +127,15 @@ async function main(): Promise<void> {
   }
 
   const staticHandler = createStaticHandler(join(here, 'web'));
+  const bridgeHandler = createBridgeHandler({
+    token: BRIDGE_TOKEN,
+    controllers: controllers.controllers,
+  });
   const server = createServer((req, res) => {
+    if (req.url?.startsWith('/api/bridge/')) {
+      void bridgeHandler(req, res);
+      return;
+    }
     if (staticHandler(req, res)) return;
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     res.end('Not found');

@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { getTaskManagerStore } from '@core/features/tasks/api/browser/task-state/task-selectors';
+import { buildCreateTaskParams } from '@core/features/tasks/api/build-create-task-params';
 import type { InitialConversationState } from '@core/features/tasks/contributions/browser/task-config/initial-conversation-section';
 import { taskViewDef } from '@core/features/tasks/contributions/views';
 import { log } from '@core/primitives/logging/browser/logger';
@@ -30,19 +31,26 @@ export function useCreateTaskCallback({
     if (!taskManager) return;
 
     const id = crypto.randomUUID();
+    const initial = buildInitialConversation(initialConversation);
     void taskManager
-      .createTask({
-        id,
-        projectId: selectedProjectId,
-        taskConfig: {
-          version: '1',
+      .createTask(
+        buildCreateTaskParams({
+          id,
+          projectId: selectedProjectId,
+          prompt: initialConversation.prompt,
+          provider: initial?.provider,
+          model: initial?.model,
           name: state.taskName.effectiveTaskName,
-          linkedIssue: state.linkedType === 'issue' ? (state.linkedIssue ?? undefined) : undefined,
-          initialStatus: deriveInitialStatus(state.linkedType, state.linkedPR),
-          initialConversation: buildInitialConversation(initialConversation),
-        },
-        workspaceConfig: state.workspaceConfig.resolvedConfig,
-      })
+          agentAutoApprove: initial?.autoApprove,
+          workspaceConfig: state.workspaceConfig.resolvedConfig,
+          taskConfig: {
+            linkedIssue:
+              state.linkedType === 'issue' ? (state.linkedIssue ?? undefined) : undefined,
+            initialStatus: deriveInitialStatus(state.linkedType, state.linkedPR),
+            initialConversation: initial,
+          },
+        })
+      )
       .catch((e) => log.error('create task failed', e));
 
     navigate(taskViewDef({ projectId: selectedProjectId, taskId: id }));
