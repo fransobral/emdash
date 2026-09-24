@@ -95,5 +95,20 @@ if (projectPath) {
   }
 }
 
+const cleanupProjectId = process.env.EMDASH_SMOKE_CLEANUP_PROJECT_ID;
+const cleanupTaskIds = (process.env.EMDASH_SMOKE_CLEANUP_TASK_IDS ?? '').split(',').filter(Boolean);
+if (cleanupProjectId && cleanupTaskIds.length > 0) {
+  await connection.call(
+    'tasks.deleteTasks',
+    {
+      projectId: cleanupProjectId,
+      taskIds: cleanupTaskIds,
+      options: { deleteConversations: true },
+    },
+    { timeoutMs: 60_000 }
+  );
+  console.log(`✓ deleted ${cleanupTaskIds.length} smoke task(s)`);
+}
+
 ws.close();
 process.exit(0);
