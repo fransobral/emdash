@@ -105,6 +105,31 @@ export function createBridgeHandler(options: BridgeOptions) {
         });
         return true;
       }
+      if (req.method === 'POST' && url.pathname === '/api/bridge/projects') {
+        const input = validateProjectInput(await readJson(req));
+        const result = (await controller(options.controllers, 'projects').call(
+          'createProject',
+          { type: 'local', path: input.path, name: input.name },
+          {}
+        )) as {
+          success: boolean;
+          data?: Project;
+          error?: { type?: string; message?: string };
+        };
+        if (!result.success || !result.data) {
+          const message =
+            result.error?.message ?? result.error?.type ?? 'project creation failed';
+          const alreadyExists = message === 'A project already exists at this path';
+          json(res, alreadyExists ? 409 : 422, { error: message });
+          return true;
+        }
+        json(res, 201, {
+          projectId: result.data.id,
+          name: result.data.name,
+          path: result.data.path,
+        });
+        return true;
+      }
       if (req.method === 'POST' && url.pathname === '/api/bridge/upload') {
         const files = await receiveUpload(req, options.controllers);
         json(res, 201, files);
@@ -577,6 +602,18 @@ function validateTaskInput(value: unknown): BridgeTaskInput {
     throw new HttpError(400, 'agentAutoApprove must be a boolean');
   }
   return input as BridgeTaskInput;
+}
+
+function validateProjectInput(value: unknown): { path: string; name: string } {
+  if (!value || typeof value !== 'object') throw new HttpError(400, 'invalid project body');
+  const input = value as Record<string, unknown>;
+  if (typeof input.path !== 'string' || !input.path.trim()) {
+    throw new HttpError(400, 'path is required');
+  }
+  if (typeof input.name !== 'string' || !input.name.trim()) {
+    throw new HttpError(400, 'name is required');
+  }
+  return { path: input.path, name: input.name };
 }
 
 function applyCors(req: IncomingMessage, res: ServerResponse): void {
