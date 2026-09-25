@@ -111,11 +111,11 @@ describe('taskChromeStore sidebar commands', () => {
     expect(store.state.sidebarCollapsed).toBe(false);
   });
 
-  it('sidebar commands leave focusedRegion alone', () => {
+  it('sidebar tab commands focus the main region', () => {
     const store = createStore();
+    store.commands.focusRegion('bottom');
 
     store.commands.openSidebarTab('files');
-    store.commands.toggleSidebar();
 
     expect(store.ephemeral.focusedRegion).toBe('main');
   });

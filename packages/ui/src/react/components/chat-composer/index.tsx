@@ -472,6 +472,7 @@ function ComposerAgentSelector({
         variant="ghost"
         size="xs"
         icon
+        className={styles.mobileTouchTarget}
         disabled
         aria-label={triggerLabel}
         title={triggerLabel}
@@ -593,7 +594,7 @@ function ComposerModeSelect({
     >
       <Select.Trigger
         aria-label={ariaLabel}
-        className={isFirst ? styles.permissionModeTrigger : undefined}
+        className={cx(isFirst && styles.permissionModeTrigger, styles.mobileTouchTarget)}
       >
         <span
           style={{
@@ -926,9 +927,19 @@ export function ChatComposer({
       >
         {/* Image attachment previews */}
         {imageAttachments.length > 0 && (
-          <div className={styles.attachmentStrip}>
+          <div
+            className={styles.attachmentStrip}
+            role="list"
+            aria-label="Attached images"
+            tabIndex={0}
+          >
             {imageAttachments.map((att) => (
-              <div key={att.id} className={styles.attachmentThumb} data-attachment-thumb>
+              <div
+                key={att.id}
+                className={styles.attachmentThumb}
+                data-attachment-thumb
+                role="listitem"
+              >
                 <button
                   type="button"
                   aria-label={`View image: ${att.name}`}
@@ -983,9 +994,14 @@ export function ChatComposer({
           popupClassName={composerThemeScope}
         />
         {/* Toolbar */}
-        <div className={styles.toolbar}>
+        <div className={styles.toolbar} data-slot="chat-composer-toolbar">
           {/* Left: agent + model selector */}
-          <div className={styles.toolbarLeft}>
+          <div
+            className={styles.toolbarLeft}
+            data-slot="chat-composer-primary-controls"
+            role="group"
+            aria-label="Conversation controls"
+          >
             {agentOptions && agentOptions.length > 0 && modelItems.length === 0 && (
               <ComposerAgentSelector
                 options={agentOptions}
@@ -1003,6 +1019,7 @@ export function ChatComposer({
                 itemToKey={(item) => item.id}
                 itemToLabel={(item) => item.name}
                 disabled={disabled}
+                className={styles.mobileTouchTarget}
                 searchPlaceholder="Search models…"
                 contentClassName={composerThemeScope}
                 contentStyle={{ minWidth: '12.5rem' }}
@@ -1180,7 +1197,7 @@ export function ChatComposer({
           </div>
 
           {/* Right: usage donut + attach + send/stop */}
-          <div className={styles.toolbarRight}>
+          <div className={styles.toolbarRight} data-slot="chat-composer-actions">
             {contextUsage && contextUsage.size > 0 && (
               <ContextUsageIndicator usage={contextUsage} disabled={disabled} />
             )}
@@ -1189,6 +1206,7 @@ export function ChatComposer({
                 variant="ghost"
                 size="xs"
                 icon
+                className={styles.mobileTouchTarget}
                 onClick={onAttach}
                 disabled={disabled}
                 aria-label="Add attachment"
@@ -1204,7 +1222,7 @@ export function ChatComposer({
                   tone="destructive"
                   size="xs"
                   icon
-                  className={styles.sendButtonRound}
+                  className={cx(styles.sendButtonRound, styles.mobileTouchTarget)}
                   onClick={onStop}
                   aria-label="Stop generation"
                 >
@@ -1215,7 +1233,7 @@ export function ChatComposer({
                   variant="primary"
                   size="xs"
                   icon
-                  className={styles.sendButtonRound}
+                  className={cx(styles.sendButtonRound, styles.mobileTouchTarget)}
                   onClick={() => handleSubmit(editorRef.current?.getText() ?? '')}
                   disabled={disabled || (!isWorking && !canSubmit)}
                   aria-label={isWorking ? 'Queue message' : 'Send message'}

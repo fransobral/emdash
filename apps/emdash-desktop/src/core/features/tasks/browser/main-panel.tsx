@@ -17,8 +17,10 @@ import { useWorkspaceLayoutContext } from '@core/features/workbench/contribution
 import { getWorkspacesWireClient } from '@core/features/workspaces/api/browser/client';
 import { projectAvailabilityUi } from '@core/manifests/browser/project-availability-ui';
 import { createLayoutStorage } from '@core/primitives/mementos/browser';
+import { MobileTaskShell } from './view/mobile-task-shell';
 import { TaskMainColumn } from './view/task-main-column';
 import { TaskSidebar } from './view/task-sidebar';
+import { useMobileTaskShell } from './view/use-mobile-task-shell';
 
 /** The task view's shared loading presentation: a centered spinner with an optional label. */
 export function TaskViewLoadingState({ label }: { label?: string }) {
@@ -345,6 +347,7 @@ const SIDEBAR_CLOSE_THRESHOLD = 8;
 const SIDEBAR_MIN_SIZE = '280px';
 
 const ReadyTaskMainPanel = observer(function ReadyTaskMainPanel() {
+  const isMobile = useMobileTaskShell();
   const taskView = useTaskComposition();
   // Zen is workspace-chrome data; the task sidebar hides while zen is active
   // as a derived condition — no task-chrome mutation, no task-side restore.
@@ -367,6 +370,14 @@ const ReadyTaskMainPanel = observer(function ReadyTaskMainPanel() {
     onCloseRequest: () => taskView.chrome.commands.collapseSidebar(),
     closeThreshold: SIDEBAR_CLOSE_THRESHOLD,
   });
+
+  if (isMobile) {
+    return (
+      <taskTabView.TabLayoutProvider layout={taskView.paneLayout}>
+        <MobileTaskShell />
+      </taskTabView.TabLayoutProvider>
+    );
+  }
 
   return (
     <taskTabView.TabLayoutProvider layout={taskView.paneLayout}>

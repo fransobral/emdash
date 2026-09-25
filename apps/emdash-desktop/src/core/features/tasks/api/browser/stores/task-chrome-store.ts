@@ -36,13 +36,20 @@ export const taskChromeStore = defineChromeStore({
     // Invariant: selecting a sidebar tab always expands the sidebar.
     openSidebarTab: ({ state }, tab: SidebarTab) => ({
       state: { ...state, sidebarTab: tab, sidebarCollapsed: false },
+      ephemeral: { focusedRegion: 'main' as const },
     }),
     // Collapses when the selected tab is already open; otherwise opens it.
     toggleSidebarTab: ({ state }, tab: SidebarTab) => {
       if (!state.sidebarCollapsed && state.sidebarTab === tab) {
-        return { state: { ...state, sidebarCollapsed: true } };
+        return {
+          state: { ...state, sidebarCollapsed: true },
+          ephemeral: { focusedRegion: 'main' as const },
+        };
       }
-      return { state: { ...state, sidebarTab: tab, sidebarCollapsed: false } };
+      return {
+        state: { ...state, sidebarTab: tab, sidebarCollapsed: false },
+        ephemeral: { focusedRegion: 'main' as const },
+      };
     },
     openTerminalDrawer: ({ state }) => ({
       state: { ...state, terminalDrawerOpen: true },

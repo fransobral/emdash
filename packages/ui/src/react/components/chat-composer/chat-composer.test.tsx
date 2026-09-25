@@ -13,6 +13,49 @@ import { ChatComposer } from './index';
 afterEach(cleanup);
 
 describe('ChatComposer', () => {
+  it('keeps model and attachment actions in reachable mobile toolbar groups', () => {
+    const { container, getByRole } = render(
+      <ChatComposer
+        modelOptions={{ sonnet: { name: 'Claude Sonnet' } }}
+        selectedModel="sonnet"
+        onModelChange={() => {}}
+        onAttach={() => {}}
+        onSubmit={() => {}}
+      />
+    );
+
+    const toolbar = container.querySelector('[data-slot="chat-composer-toolbar"]');
+    const primaryControls = container.querySelector('[data-slot="chat-composer-primary-controls"]');
+    const actions = container.querySelector('[data-slot="chat-composer-actions"]');
+
+    expect(toolbar).not.toBeNull();
+    expect(primaryControls?.getAttribute('role')).toBe('group');
+    expect(primaryControls?.getAttribute('aria-label')).toBe('Conversation controls');
+    const modelSelector = getByRole('combobox');
+    expect(modelSelector.textContent).toContain('Claude Sonnet');
+    expect(primaryControls?.contains(modelSelector)).toBe(true);
+    expect(actions?.contains(getByRole('button', { name: 'Add attachment' }))).toBe(true);
+    expect(actions?.contains(getByRole('button', { name: 'Send message' }))).toBe(true);
+  });
+
+  it('exposes image attachments as a keyboard-scrollable labelled list', () => {
+    const { getByRole, getAllByRole } = render(
+      <ChatComposer
+        attachments={[
+          { id: 'one', name: 'one.png', kind: 'image', previewUrl: 'data:image/png,one' },
+          { id: 'two', name: 'two.png', kind: 'image', previewUrl: 'data:image/png,two' },
+        ]}
+        onAttachmentsChange={() => {}}
+        onSubmit={() => {}}
+      />
+    );
+
+    const list = getByRole('list', { name: 'Attached images' });
+    expect(list.getAttribute('tabindex')).toBe('0');
+    expect(getAllByRole('listitem')).toHaveLength(2);
+    expect(getByRole('button', { name: 'Remove one.png' })).toBeTruthy();
+  });
+
   it('shows startup failures on the MCP trigger and affected server, including while disabled', async () => {
     const { getByRole, findByRole, queryByText, getByText } = render(
       <ChatComposer
