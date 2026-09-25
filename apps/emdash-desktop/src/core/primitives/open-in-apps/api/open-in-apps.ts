@@ -209,12 +209,15 @@ const _OPEN_IN_APPS = {
     id: 'terminal',
     label: 'Terminal',
     iconPath: ICON_PATHS.terminal,
-    alwaysAvailable: true,
     supportsRemote: true,
     platforms: {
-      darwin: { openCommands: ['open -a Terminal {{path}}'] },
+      darwin: {
+        openCommands: ['open -a Terminal {{path}}'],
+        checkCommands: ['open'],
+      },
       win32: {
         openCommands: ['wt -d {{path}}', 'start cmd /K "cd /d {{path_raw}}"'],
+        checkCommands: ['wt', 'cmd'],
       },
       linux: {
         openCommands: [
@@ -222,6 +225,7 @@ const _OPEN_IN_APPS = {
           'gnome-terminal --working-directory={{path}}',
           'konsole --workdir {{path}}',
         ],
+        checkCommands: ['x-terminal-emulator', 'gnome-terminal', 'konsole'],
       },
     },
   },
