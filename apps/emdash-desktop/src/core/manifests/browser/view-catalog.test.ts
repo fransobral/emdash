@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { automationsViewDef } from '@core/features/automations/contributions/views';
+import { cockpitFilesViewDef, cockpitViewDef } from '@core/features/cockpit/contributions/views';
 import { projectViewDef } from '@core/features/projects/contributions/views';
 import { settingsViewDef } from '@core/features/settings/contributions/views';
 import { taskViewDef } from '@core/features/tasks/contributions/views';
@@ -10,6 +11,8 @@ describe('viewCatalog', () => {
   it('contains exactly the current application view ids', () => {
     expect(viewCatalog.defs.map(({ id }) => id)).toEqual([
       'home',
+      'cockpit',
+      'cockpitFiles',
       'automations',
       'project',
       'task',
@@ -20,6 +23,8 @@ describe('viewCatalog', () => {
   it('accepts missing params for empty and all-optional schemas', () => {
     expect(homeViewDef.safeRef(undefined)).toBeDefined();
     expect(homeViewDef.safeRef({})).toBeDefined();
+    expect(cockpitViewDef.safeRef(undefined)).toBeDefined();
+    expect(cockpitFilesViewDef.safeRef(undefined)).toBeDefined();
     expect(automationsViewDef.safeRef(undefined)).toBeDefined();
     expect(automationsViewDef.safeRef({})).toBeDefined();
     expect(settingsViewDef.safeRef(undefined)).toBeDefined();
@@ -59,6 +64,8 @@ describe('viewCatalog', () => {
       )
     ).toEqual({
       home: 'home_viewed',
+      cockpit: 'cockpit_viewed',
+      cockpitFiles: 'cockpit_files_viewed',
       automations: 'automations_viewed',
       project: 'project_viewed',
       task: 'task_viewed',

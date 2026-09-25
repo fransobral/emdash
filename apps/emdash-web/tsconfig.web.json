@@ -15,5 +15,6 @@
     "web/**/*.tsx",
     "../emdash-desktop/src/types/**/*",
     "../emdash-desktop/src/renderer/globals.d.ts"
-  ]
+  ],
+  "exclude": ["web/**/*.test.ts"]
 }

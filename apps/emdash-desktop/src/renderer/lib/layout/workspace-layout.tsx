@@ -1,6 +1,7 @@
 import { Resizable, useCollapsiblePanelBinding } from '@emdash/ui/react/primitives';
-import { type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useWorkspaceLayoutContext } from '@core/features/workbench/contributions/browser/layout-provider';
+import { useMobileWorkspace } from '@renderer/lib/layout/use-mobile-workspace';
 
 const LEFT_PANEL_DEFAULT_SIZE = '20%';
 // Resize floor (the released builds' value): dragging shrinks the sidebar only
@@ -26,6 +27,7 @@ interface WorkspaceLayoutProps {
 
 export function WorkspaceLayout({ leftSidebar, mainContent }: WorkspaceLayoutProps) {
   const { isLeftOpen, toggleLeftSidebar, layoutStorage } = useWorkspaceLayoutContext();
+  const isMobile = useMobileWorkspace();
   const binding = useCollapsiblePanelBinding({
     storageKey: 'workspace-outer',
     storage: layoutStorage,
@@ -36,6 +38,45 @@ export function WorkspaceLayout({ leftSidebar, mainContent }: WorkspaceLayoutPro
     onCloseRequest: () => toggleLeftSidebar(),
     closeThreshold: LEFT_SIDEBAR_CLOSE_THRESHOLD,
   });
+
+  useEffect(() => {
+    if (!isMobile || !isLeftOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') toggleLeftSidebar();
+    };
+
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isLeftOpen, isMobile, toggleLeftSidebar]);
+
+  if (isMobile) {
+    return (
+      <div className="relative h-full w-full overflow-hidden">
+        <div className="h-full w-full">{mainContent}</div>
+        {isLeftOpen && (
+          <div className="absolute inset-0 z-40">
+            <button
+              type="button"
+              aria-label="Close navigation"
+              aria-controls="workspace-mobile-navigation"
+              className="absolute inset-0 h-full w-full cursor-default bg-black/55 backdrop-blur-[1px]"
+              onClick={toggleLeftSidebar}
+            />
+            <aside
+              id="workspace-mobile-navigation"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Workspace navigation"
+              className="absolute inset-y-0 left-0 z-10 w-[min(86vw,320px)] overflow-hidden bg-background shadow-2xl"
+            >
+              {leftSidebar}
+            </aside>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Resizable.Group id="workspace-outer" orientation="horizontal" {...binding.groupProps}>

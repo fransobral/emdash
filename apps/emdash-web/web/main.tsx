@@ -61,6 +61,7 @@ import {
 import { wireExternalLinkRequests } from '@renderer/lib/external-link-requests';
 import { getDesktopWireClient } from '@renderer/lib/runtime/desktop-wire-client';
 import { seedRendererNavigationHost } from '@renderer/lib/runtime/seed-navigation-host';
+import { initWebNotifications } from './notifications/web-notifications';
 import { captureTokenFromUrl, getWebToken, seedWebWire } from './seed-web-wire';
 import { installElectronApiShim } from './shim';
 
@@ -180,6 +181,8 @@ async function bootstrap() {
       </MementoClientProvider>
     </ErrorBoundary>
   );
+
+  initWebNotifications();
 
   const outcome = await gate;
   dismissBootSplash();
