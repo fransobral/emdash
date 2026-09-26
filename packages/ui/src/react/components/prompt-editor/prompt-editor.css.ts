@@ -25,7 +25,16 @@ export const editorPlaceholder = style({
   color: vars.foregroundPassive,
   // 16px on phones: iOS Safari zooms the page when focusing smaller text.
   '@media': {
-    'screen and (max-width: 47.9375rem)': { fontSize: '1rem', lineHeight: 1.5 },
+    'screen and (max-width: 47.9375rem)': {
+      fontSize: '1rem',
+      lineHeight: 1.5,
+      // One line with an ellipsis: the editor is one line tall until typed into,
+      // so a wrapped placeholder showed a second line sliced in half.
+      right: 0,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
   },
 });
 
