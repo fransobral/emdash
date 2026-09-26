@@ -3,6 +3,9 @@
 @import '@xterm/xterm/css/xterm.css';
 
 @source '../core';
+/* Explicit so hosts whose Vite root is elsewhere (emdash-web) still compile
+   utilities used only by the renderer shell, such as the mobile drawer. */
+@source '.';
 
 @custom-variant emlight (&:is(.emlight *));
 @custom-variant emdark (&:is(.emdark *));
