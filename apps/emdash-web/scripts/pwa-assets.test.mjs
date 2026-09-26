@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import vm from 'node:vm';
 import { resolve } from 'node:path';
 import test from 'node:test';
+import vm from 'node:vm';
 
 const appRoot = resolve(import.meta.dirname, '..');
 

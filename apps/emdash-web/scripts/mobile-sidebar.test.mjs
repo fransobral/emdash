@@ -10,9 +10,7 @@ async function read(path) {
 }
 
 test('mobile workspace exposes a reopen control that hides while the drawer is open', async () => {
-  const layout = await read(
-    'apps/emdash-desktop/src/renderer/lib/layout/workspace-layout.tsx'
-  );
+  const layout = await read('apps/emdash-desktop/src/renderer/lib/layout/workspace-layout.tsx');
   const pwa = await read('apps/emdash-web/web/pwa.tsx');
   const styles = await read('apps/emdash-web/web/mobile.css');
 
