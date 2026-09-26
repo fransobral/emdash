@@ -53,7 +53,7 @@ export function WorkspaceLayout({ leftSidebar, mainContent }: WorkspaceLayoutPro
   if (isMobile) {
     return (
       <div className="relative h-full w-full overflow-hidden">
-        <div className="h-full w-full">{mainContent}</div>
+        <div className="workspace-main-panel h-full w-full">{mainContent}</div>
         {isLeftOpen && (
           <div className="absolute inset-0 z-40">
             <button

@@ -53,6 +53,18 @@ EMDASH_WEB_TOKEN=your-secret node dist/server.js
 ```
 
 The startup banner prints a ready-to-open URL carrying the token.
+
+### Install as an app
+
+Emdash Web is an installable PWA. Open it in Brave, Chrome, Edge, or another supporting browser and
+use the in-app **Install Emdash** prompt (or the browser's Install action). In Brave Desktop, the
+manual action is under **Menu → Save and share → Install Emdash**. On Android it may be labeled
+**Add to Home screen**. On iPhone or iPad, use Safari's **Share → Add to Home Screen**.
+
+Installation and service workers require a secure context: `localhost` works for local use; LAN or
+internet access must be served through HTTPS. The installed shell can open offline, but projects,
+terminals, and agents still require a live connection to the Emdash Web server.
+
 Configuration via environment variables:
 
 | Variable | Default | Description |

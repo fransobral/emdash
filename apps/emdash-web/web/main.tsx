@@ -25,6 +25,7 @@ import '@emdash/chat-ui/style.css';
 import '@renderer/index.css';
 import 'devicon/devicon.min.css';
 import 'katex/dist/katex.min.css';
+import './mobile.css';
 import { getNavigation } from '@core/primitives/navigation/browser/navigation-selectors';
 import { createAppScope } from '@core/primitives/scoped-stores/browser';
 import { appSubject } from '@core/primitives/subjects/api';
@@ -62,6 +63,7 @@ import { wireExternalLinkRequests } from '@renderer/lib/external-link-requests';
 import { getDesktopWireClient } from '@renderer/lib/runtime/desktop-wire-client';
 import { seedRendererNavigationHost } from '@renderer/lib/runtime/seed-navigation-host';
 import { initWebNotifications } from './notifications/web-notifications';
+import { InstallAppPrompt, MobileNavigationButton, registerPwa } from './pwa';
 import { captureTokenFromUrl, getWebToken, seedWebWire } from './seed-web-wire';
 import { installElectronApiShim } from './shim';
 
@@ -96,6 +98,7 @@ function showTokenPrompt(): void {
 }
 
 async function bootstrap() {
+  registerPwa();
   installElectronApiShim();
   captureTokenFromUrl();
   initBootSplash();
@@ -177,6 +180,8 @@ async function bootstrap() {
       <MementoClientProvider client={mementoClient}>
         <SubjectProvider subject={appSubject({})}>
           <App />
+          <MobileNavigationButton />
+          <InstallAppPrompt />
         </SubjectProvider>
       </MementoClientProvider>
     </ErrorBoundary>
