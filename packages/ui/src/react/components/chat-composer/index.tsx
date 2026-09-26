@@ -919,7 +919,10 @@ export function ChatComposer({
       )}
 
       <div
-        className={styles.composerShell({ hasBand: !!hasBand, dragActive })}
+        className={cx(
+          styles.composerShell({ hasBand: !!hasBand, dragActive }),
+          !hasBand && styles.composerShellMobile
+        )}
         onPaste={handlePaste}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}

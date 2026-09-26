@@ -120,6 +120,22 @@ export const composerShell = recipe({
   defaultVariants: { hasBand: false, dragActive: false },
 });
 
+// Mobile card treatment, modelled on a compact prompt composer: softer radius,
+// a hairline shadow at rest and a faint focus halo instead of a heavier border.
+export const composerShellMobile = style({
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      borderRadius: '1rem',
+      boxShadow: '0 1px 2px rgb(0 0 0 / 4%)',
+      selectors: {
+        '&:focus-within': {
+          boxShadow: `0 0 0 3px color-mix(in srgb, ${vars.foreground} 6%, transparent)`,
+        },
+      },
+    },
+  },
+});
+
 // ── Image attachments ─────────────────────────────────────────────────────────
 
 export const attachmentStrip = style({
@@ -232,6 +248,8 @@ export const editorArea = style({
   '@media': {
     'screen and (max-width: 47.9375rem)': {
       maxHeight: 'min(200px, 30dvh)',
+      paddingLeft: '0.875rem',
+      paddingRight: '0.875rem',
     },
   },
 });
@@ -248,10 +266,10 @@ export const toolbar = style({
   paddingBottom: '0.5rem',
   '@media': {
     'screen and (max-width: 47.9375rem)': {
-      display: 'grid',
-      gridTemplateColumns: 'minmax(0, 1fr) auto',
-      rowGap: '0.25rem',
-      paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))',
+      gap: '0.5rem',
+      paddingLeft: '0.375rem',
+      paddingRight: '0.375rem',
+      paddingBottom: '0.375rem',
     },
   },
 });
@@ -264,11 +282,14 @@ export const toolbarLeft = style({
   minWidth: 0,
   '@media': {
     'screen and (max-width: 47.9375rem)': {
-      gridColumn: '1 / -1',
-      minHeight: '2.75rem',
+      flex: 1,
+      gap: '0.125rem',
+      minHeight: '2.5rem',
       overflowX: 'auto',
       overscrollBehaviorX: 'contain',
       scrollbarWidth: 'none',
+      // Fade the trailing edge so clipped chips read as scrollable.
+      maskImage: 'linear-gradient(to right, #000 calc(100% - 1.5rem), transparent)',
     },
   },
 });
@@ -295,9 +316,9 @@ export const toolbarRight = style({
   gap: '0.25rem',
   '@media': {
     'screen and (max-width: 47.9375rem)': {
-      gridColumn: '2',
-      justifySelf: 'end',
-      minHeight: '2.75rem',
+      flexShrink: 0,
+      gap: '0.125rem',
+      minHeight: '2.5rem',
     },
   },
 });
@@ -305,8 +326,10 @@ export const toolbarRight = style({
 export const mobileTouchTarget = style({
   '@media': {
     'screen and (max-width: 47.9375rem)': {
-      minWidth: '2.75rem',
-      minHeight: '2.75rem',
+      minWidth: '2.5rem',
+      minHeight: '2.5rem',
+      flexShrink: 0,
+      borderRadius: '9999px',
     },
   },
 });
@@ -341,9 +364,11 @@ export const mcpTrigger = style([
     },
     '@media': {
       'screen and (max-width: 47.9375rem)': {
-        minWidth: '2.75rem',
-        minHeight: '2.75rem',
+        minWidth: '2.5rem',
+        minHeight: '2.5rem',
+        flexShrink: 0,
         justifyContent: 'center',
+        borderRadius: '9999px',
       },
     },
   },
@@ -411,8 +436,10 @@ export const agentTrigger = style({
   },
   '@media': {
     'screen and (max-width: 47.9375rem)': {
-      width: '2.75rem',
-      height: '2.75rem',
+      width: '2.5rem',
+      height: '2.5rem',
+      flexShrink: 0,
+      borderRadius: '9999px',
     },
   },
 });
