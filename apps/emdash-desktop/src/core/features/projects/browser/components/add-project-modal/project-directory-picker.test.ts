@@ -90,8 +90,25 @@ describe('ProjectDirectoryPicker', () => {
       expect(reveal.mock.calls[0]?.[0].input).toEqual({ path: '', depth: 2 });
       expect(container.textContent).not.toContain('Loading folder');
 
+      const repoRow = container.querySelector<HTMLButtonElement>('[title="/home/dev/repo"]');
+      expect(repoRow).not.toBeNull();
+      await act(async () => repoRow?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
+      await act(async () => {
+        await waitFor(() => reveal.mock.calls.length === 2);
+      });
+
+      const backButton = container.querySelector<HTMLButtonElement>('[aria-label="Go back"]');
+      expect(backButton).not.toBeNull();
+      await act(async () => backButton?.click());
+      await act(async () => {
+        await waitFor(() => reveal.mock.calls.length === 3);
+      });
+
+      const sessionIds = reveal.mock.calls.map((call) => call[0].key.sessionId);
+      expect(new Set(sessionIds)).toHaveLength(3);
+
       await act(async () => root.render(createElement(ProjectDirectoryPicker, props)));
-      expect(reveal).toHaveBeenCalledOnce();
+      expect(reveal).toHaveBeenCalledTimes(3);
     } finally {
       await wire.dispose();
       await directoryTree.dispose();

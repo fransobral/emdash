@@ -54,7 +54,11 @@ const collisionDetection: CollisionDetection = (args) => {
   return splitZones.length > 0 ? splitZones : collisions;
 };
 
-export const TaskMainColumn = observer(function TaskMainColumn() {
+export const TaskMainColumn = observer(function TaskMainColumn({
+  mobileWorkspace = false,
+}: {
+  mobileWorkspace?: boolean;
+}) {
   const taskView = useTaskComposition();
   const { paneLayout } = taskView;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -114,26 +118,34 @@ export const TaskMainColumn = observer(function TaskMainColumn() {
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveDrag(null)}
     >
-      <Resizable.Group orientation="vertical" id="task-main-vertical" {...drawerBinding.groupProps}>
-        <Resizable.Panel id="task-main-content" minSize="30%">
-          <SplitPaneLayout storage={layoutStorage} />
-        </Resizable.Panel>
-        {/* Closed = panel AND handle unmounted (sync contract: never program
+      {mobileWorkspace ? (
+        <MobileActivePane />
+      ) : (
+        <Resizable.Group
+          orientation="vertical"
+          id="task-main-vertical"
+          {...drawerBinding.groupProps}
+        >
+          <Resizable.Panel id="task-main-content" minSize="30%">
+            <SplitPaneLayout storage={layoutStorage} />
+          </Resizable.Panel>
+          {/* Closed = panel AND handle unmounted (sync contract: never program
             the panels). Terminal content survives the unmount because each
             PTY session's xterm DOM is reparented to the off-screen host, not
             disposed (see usePty). */}
-        {taskView.isTerminalDrawerOpen && (
-          <>
-            <Resizable.Handle />
-            <Resizable.Panel
-              {...drawerBinding.collapsiblePanelProps}
-              defaultSize={drawerBinding.collapsiblePanelProps.defaultSize ?? '25%'}
-            >
-              <TerminalsPanel />
-            </Resizable.Panel>
-          </>
-        )}
-      </Resizable.Group>
+          {taskView.isTerminalDrawerOpen && (
+            <>
+              <Resizable.Handle />
+              <Resizable.Panel
+                {...drawerBinding.collapsiblePanelProps}
+                defaultSize={drawerBinding.collapsiblePanelProps.defaultSize ?? '25%'}
+              >
+                <TerminalsPanel />
+              </Resizable.Panel>
+            </>
+          )}
+        </Resizable.Group>
+      )}
       <DragOverlay dropAnimation={null}>
         {activeDrag?.kind === 'tab' ? (
           <TabDragPreview tabId={activeDrag.tabId} />
@@ -142,6 +154,26 @@ export const TaskMainColumn = observer(function TaskMainColumn() {
         ) : null}
       </DragOverlay>
     </DndContext>
+  );
+});
+
+const MobileActivePane = observer(function MobileActivePane() {
+  const taskView = useTaskComposition();
+  const group =
+    taskView.paneLayout.groups.find(({ paneId }) => paneId === taskView.paneLayout.activePaneId) ??
+    taskView.paneLayout.groups[0];
+
+  if (!group) return <PaneEmptyState />;
+
+  return (
+    <div
+      className="h-full min-h-0"
+      onPointerDown={() => taskView.paneLayout.setActiveGroup(group.paneId)}
+    >
+      <PaneProvider group={group} canSplit={false} splitPane={() => {}}>
+        <PaneContent emptyState={<PaneEmptyState />} trailingSlot={<NewConversationTabButton />} />
+      </PaneProvider>
+    </div>
   );
 });
 

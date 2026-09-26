@@ -8,13 +8,19 @@ import { startPerfVitalsTelemetry } from './perf-vitals';
 import type { ServicesBundle } from './services';
 import { initializeUpdater } from './updater';
 
-export function bootBackground(services: ServicesBundle, runtimes: DesktopRuntimes): void {
+export function bootBackground(
+  services: ServicesBundle,
+  runtimes: DesktopRuntimes,
+  options: { updater?: boolean } = {}
+): void {
   startMainDevPerfInstruments();
   startPerfVitalsTelemetry(runtimes);
 
   // Updater init hits the network and must never block the boot chain; it
   // moved out of preflight under the window-first boot (spec build issue 2).
-  runInBackground('updater-initialize', initializeUpdater);
+  if (options.updater !== false) {
+    runInBackground('updater-initialize', initializeUpdater);
+  }
 
   runInBackground('dependency-probe', async () => {
     await runtimes.clients.hostDependencies.snapshot.mutate('refresh', {

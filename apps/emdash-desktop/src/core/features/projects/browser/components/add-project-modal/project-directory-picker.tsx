@@ -95,7 +95,10 @@ export function ProjectDirectoryPicker({
   const root = location?.root ?? null;
   const navigationRoot = location?.navigationRoot ?? homePath;
   const separator = location?.separator ?? '/';
-  const sessionId = useMemo(() => crypto.randomUUID(), []);
+  // Each visited root needs its own tree session. Reusing a session while a
+  // previous root is lingering can leave a mutation waiting for an observer
+  // from the old subscription when the user navigates back quickly.
+  const sessionId = useMemo(() => crypto.randomUUID(), [history.path]);
   const tree = useProjectDirectoryTree(host, root, sessionId, getProjectsClient);
 
   const listing = directoryListing({

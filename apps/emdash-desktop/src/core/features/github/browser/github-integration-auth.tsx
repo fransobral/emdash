@@ -39,13 +39,14 @@ export function GitHubIntegrationAuth({ metadata, onSuccess, onClose }: Integrat
   const [cliLoading, setCliLoading] = useState(false);
   const [error, setError] = useState<MethodError>(null);
 
+  const isWebBrowser = !navigator.userAgent.includes('Electron');
   const isSignedIn = session?.isSignedIn === true;
   const hasAccount = session?.hasAccount === true;
   const deviceFlowLoading = deviceFlowMutation.isPending;
   const anyLoading = oauthLoading || cliLoading || deviceFlowLoading;
   const oauthContent = getOAuthContent({ isSignedIn, hasAccount });
   const hasMethod = (kind: string) => metadata.auth.methods.some((method) => method.kind === kind);
-  const showDeviceFlowMethod = !hasAccount && hasMethod('oauth-device');
+  const showDeviceFlowMethod = (isWebBrowser || !hasAccount) && hasMethod('oauth-device');
 
   const connectOAuth = async () => {
     setError(null);
@@ -136,7 +137,7 @@ export function GitHubIntegrationAuth({ metadata, onSuccess, onClose }: Integrat
   return (
     <>
       <Dialog.Body className="gap-3">
-        {hasMethod('oauth') ? (
+        {!isWebBrowser && hasMethod('oauth') ? (
           <ConnectMethodCard
             icon={Github}
             title={oauthContent.title}
@@ -167,9 +168,9 @@ export function GitHubIntegrationAuth({ metadata, onSuccess, onClose }: Integrat
         {showDeviceFlowMethod && (
           <ConnectMethodCard
             icon={KeyRound}
-            title="Use device flow"
+            title={isWebBrowser ? 'Sign in with GitHub' : 'Use device flow'}
             description="Connect GitHub on this device with a one-time code"
-            label="Use device flow"
+            label={isWebBrowser ? 'Sign in with GitHub' : 'Use device flow'}
             loadingLabel="Opening device flow"
             loading={deviceFlowLoading}
             disabled={anyLoading}

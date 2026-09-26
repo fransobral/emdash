@@ -10,13 +10,15 @@ import {
 } from './add-project-modal/project-directory-picker';
 
 export interface DirectorySelectorModalProps {
-  connectionId: string;
+  strategy: 'local' | 'ssh';
+  connectionId?: string;
   initialPath?: string;
   ensureDefaultRoot?: boolean;
   getProjectsClient(): Promise<ProjectDirectoryPickerClient>;
 }
 
 export function DirectorySelectorModal({
+  strategy,
   connectionId,
   initialPath = '',
   ensureDefaultRoot = false,
@@ -24,22 +26,21 @@ export function DirectorySelectorModal({
 }: DirectorySelectorModalProps) {
   const modal = useModalController('directorySelectorModal');
   const [selectedPathOverride, setSelectedPathOverride] = useState<string | null>(null);
+  const host =
+    strategy === 'local'
+      ? ({ type: 'local' } as const)
+      : connectionId
+        ? ({ type: 'ssh', connectionId } as const)
+        : null;
   const homeQuery = useQuery({
-    queryKey: ['projectHostHomeDir', { type: 'ssh', connectionId }],
-    queryFn: async () =>
-      (await getProjectsClient()).getHostHomeDir({
-        type: 'ssh',
-        connectionId,
-      }),
+    queryKey: ['projectHostHomeDir', host],
+    queryFn: async () => (await getProjectsClient()).getHostHomeDir(host!),
+    enabled: host !== null,
   });
   const ensureDefaultRootQuery = useQuery({
-    queryKey: ['ensureProjectDefaultRepositoriesRoot', connectionId],
-    queryFn: async () =>
-      (await getProjectsClient()).ensureDefaultRepositoriesRoot({
-        type: 'ssh',
-        connectionId,
-      }),
-    enabled: ensureDefaultRoot,
+    queryKey: ['ensureProjectDefaultRepositoriesRoot', host],
+    queryFn: async () => (await getProjectsClient()).ensureDefaultRepositoriesRoot(host!),
+    enabled: ensureDefaultRoot && host !== null,
   });
   const pickerInitialPath =
     ensureDefaultRoot && ensureDefaultRootQuery.data?.success
@@ -53,7 +54,7 @@ export function DirectorySelectorModal({
     <ModalLayout
       header={
         <Dialog.Header>
-          <Dialog.Title>Select Remote Directory</Dialog.Title>
+          <Dialog.Title>Seleccionar carpeta</Dialog.Title>
         </Dialog.Header>
       }
       footer={
@@ -81,7 +82,7 @@ export function DirectorySelectorModal({
             </div>
           ) : (
             <ProjectDirectoryPicker
-              strategy="ssh"
+              strategy={strategy}
               connectionId={connectionId}
               initialPath={pickerInitialPath}
               homePath={homeQuery.data ?? ''}

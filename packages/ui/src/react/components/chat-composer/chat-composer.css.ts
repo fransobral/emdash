@@ -7,6 +7,7 @@ import { tokenVars } from '@theme/tokens.css';
 export const composerRoot = style({
   display: 'flex',
   flexDirection: 'column',
+  minWidth: 0,
 });
 
 export const noticeBand = recipe({
@@ -128,12 +129,34 @@ export const attachmentStrip = style({
   paddingLeft: '0.75rem',
   paddingRight: '0.75rem',
   paddingTop: '0.75rem',
+  outline: 'none',
+  selectors: {
+    '&:focus-visible': { outline: `2px solid ${vars.borderFocus}`, outlineOffset: -2 },
+  },
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      flexWrap: 'nowrap',
+      overflowX: 'auto',
+      overscrollBehaviorX: 'contain',
+      scrollSnapType: 'x proximity',
+      scrollbarWidth: 'thin',
+    },
+  },
 });
 
 export const attachmentThumb = style({
   position: 'relative',
   width: '2rem',
   height: '2rem',
+  flexShrink: 0,
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      display: 'flex',
+      width: '5.5rem',
+      height: '2.75rem',
+      scrollSnapAlign: 'start',
+    },
+  },
 });
 
 export const attachmentThumbBtn = style({
@@ -145,6 +168,12 @@ export const attachmentThumbBtn = style({
   selectors: {
     '&:focus-visible': { outlineWidth: 2, outlineOffset: 1 },
   },
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      width: '2.75rem',
+      height: '2.75rem',
+    },
+  },
 });
 
 export const attachmentThumbImg = style({
@@ -153,6 +182,12 @@ export const attachmentThumbImg = style({
   borderRadius: tokenVars.radiusMd,
   objectFit: 'cover',
   boxShadow: `0 0 0 1px ${vars.border}`,
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      width: '2.75rem',
+      height: '2.75rem',
+    },
+  },
 });
 
 export const attachmentRemoveBtn = style({
@@ -173,6 +208,16 @@ export const attachmentRemoveBtn = style({
     // Show on hover of parent thumb
     '[data-attachment-thumb]:hover &': { opacity: 1 },
   },
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      position: 'static',
+      width: '2.75rem',
+      height: '2.75rem',
+      borderRadius: tokenVars.radiusMd,
+      opacity: 1,
+      boxShadow: 'none',
+    },
+  },
 });
 
 // ── Editor area ───────────────────────────────────────────────────────────────
@@ -184,6 +229,11 @@ export const editorArea = style({
   paddingRight: '0.75rem',
   paddingTop: '0.75rem',
   paddingBottom: '0.5rem',
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      maxHeight: 'min(200px, 30dvh)',
+    },
+  },
 });
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
@@ -196,6 +246,14 @@ export const toolbar = style({
   paddingRight: '0.5rem',
   paddingTop: '0.25rem',
   paddingBottom: '0.5rem',
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      display: 'grid',
+      gridTemplateColumns: 'minmax(0, 1fr) auto',
+      rowGap: '0.25rem',
+      paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))',
+    },
+  },
 });
 
 export const toolbarLeft = style({
@@ -203,6 +261,16 @@ export const toolbarLeft = style({
   alignItems: 'center',
   gap: '0.375rem',
   minHeight: '2rem',
+  minWidth: 0,
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      gridColumn: '1 / -1',
+      minHeight: '2.75rem',
+      overflowX: 'auto',
+      overscrollBehaviorX: 'contain',
+      scrollbarWidth: 'none',
+    },
+  },
 });
 
 export const mcpNameGroup = style({
@@ -221,7 +289,27 @@ export const mcpErrorText = style({
   overflowWrap: 'anywhere',
   whiteSpace: 'pre-wrap',
 });
-export const toolbarRight = style({ display: 'flex', alignItems: 'center', gap: '0.25rem' });
+export const toolbarRight = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.25rem',
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      gridColumn: '2',
+      justifySelf: 'end',
+      minHeight: '2.75rem',
+    },
+  },
+});
+
+export const mobileTouchTarget = style({
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      minWidth: '2.75rem',
+      minHeight: '2.75rem',
+    },
+  },
+});
 
 export const permissionModeTrigger = style({
   paddingLeft: '0.1875rem',
@@ -250,6 +338,13 @@ export const mcpTrigger = style([
       '&[data-failed]': { color: vars.surfaceDestructiveForeground },
       '&:hover': { backgroundColor: vars.surfaceBaseSelected },
       '&[data-popup-open]': { backgroundColor: vars.surfaceBaseSelected },
+    },
+    '@media': {
+      'screen and (max-width: 47.9375rem)': {
+        minWidth: '2.75rem',
+        minHeight: '2.75rem',
+        justifyContent: 'center',
+      },
     },
   },
 ]);
@@ -313,6 +408,12 @@ export const agentTrigger = style({
   selectors: {
     '&:hover': { backgroundColor: vars.surfaceBaseSelected },
     '&[data-popup-open]': { backgroundColor: vars.surfaceBaseSelected },
+  },
+  '@media': {
+    'screen and (max-width: 47.9375rem)': {
+      width: '2.75rem',
+      height: '2.75rem',
+    },
   },
 });
 

@@ -23,13 +23,23 @@ function spawnChildProcess(spec: WorkerProcessSpec): WorkerProcess {
     // arrays, and Dates across the IPC channel, matching Wire payload semantics.
     serialization: 'advanced',
   });
+  // ChildProcess emits IPC send failures as `error` events even when send has
+  // a callback. The worker host observes process exit separately and applies
+  // its supervision policy; leaving this event unhandled would crash the host.
+  child.on('error', () => undefined);
 
   return {
     get pid() {
       return child.pid;
     },
     send(message) {
-      child.send(message as Parameters<ChildProcess['send']>[0]);
+      if (!child.connected) return;
+      child.send(message as Parameters<ChildProcess['send']>[0], (error) => {
+        // Shutdown races can close IPC between the connected check and send.
+        // Supplying a callback consumes the asynchronous EPIPE/closed-channel
+        // error instead of turning a clean host shutdown into an uncaught event.
+        void error;
+      });
     },
     onMessage(cb): Unsubscribe {
       return listen(child as unknown as EventEmitterLike, 'message', (message) => cb(message));

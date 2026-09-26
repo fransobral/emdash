@@ -2,16 +2,28 @@ import { Button } from '@emdash/ui/react/primitives';
 import { AlertCircle, CheckCircle, Github, LogIn, User } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useAccountSession, useAccountSignIn } from '@core/features/account/api/browser/useAccount';
+import { useGitHubDeviceFlowAuth } from '@core/features/github/api/browser/use-github-auth';
+import { useOpenModal } from '@core/manifests/browser/modal-api';
 
 export function SignInStep({ onComplete }: { onComplete: () => void }) {
   const { data: session, isLoading: sessionLoading } = useAccountSession();
   const signInMutation = useAccountSignIn();
+  const deviceFlowMutation = useGitHubDeviceFlowAuth();
+  const openDeviceFlow = useOpenModal('githubDeviceFlowModal');
+  const isWebBrowser = !navigator.userAgent.includes('Electron');
   const skippedSignInRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSignIn = async () => {
     skippedSignInRef.current = false;
     setError(null);
+    if (isWebBrowser) {
+      const deviceFlowOutcome = openDeviceFlow({});
+      void deviceFlowMutation.mutateAsync();
+      const outcome = await deviceFlowOutcome;
+      if (outcome.success && !skippedSignInRef.current) onComplete();
+      return;
+    }
     try {
       const result = await signInMutation.mutateAsync(undefined);
       if (!result.success) {
@@ -91,10 +103,12 @@ export function SignInStep({ onComplete }: { onComplete: () => void }) {
           variant="primary"
           size="lg"
           onClick={handleSignIn}
-          disabled={signInMutation.isPending}
+          disabled={signInMutation.isPending || deviceFlowMutation.isPending}
         >
           <LogIn className="h-4 w-4" />
-          {signInMutation.isPending ? 'Signing in…' : 'Sign in with GitHub'}
+          {signInMutation.isPending || deviceFlowMutation.isPending
+            ? 'Signing in…'
+            : 'Sign in with GitHub'}
         </Button>
         {error && (
           <div className="bg-destructive/10 text-destructive flex items-start gap-1.5 rounded-md px-2.5 py-2 text-xs">
