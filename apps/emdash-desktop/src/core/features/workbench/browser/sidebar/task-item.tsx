@@ -109,7 +109,7 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
     >
       <SidebarMenuRow
         className={cn(
-          'group/row flex items-center justify-between px-1 py-1.5 h-8 gap-1',
+          'group/row flex items-center justify-between px-1 py-1.5 h-8 max-md:h-11 gap-1',
           rowVariant === 'pinned' ? 'pl-2' : 'pl-8'
         )}
         isActive={isActive}

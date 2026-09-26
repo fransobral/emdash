@@ -34,13 +34,18 @@ import {
   useViewParams,
   useWorkspaceSlots,
 } from '@core/primitives/navigation/browser/navigation-hooks';
+import { useMobileViewport } from '@core/primitives/styling/browser/use-mobile-viewport';
 import { SidebarProjectItem } from './project-item';
 import { SidebarTaskItem } from './task-item';
 
 const ROW_HEIGHT = 32;
+// Rows are absolutely positioned, so the virtualizer must know the real height:
+// on phones rows grow to a 44px touch target (items use `max-md:h-11`).
+const MOBILE_ROW_HEIGHT = 44;
 
 export const SidebarVirtualList = observer(function SidebarVirtualList() {
   const rows = getSidebarStore().sidebarRows;
+  const rowHeight = useMobileViewport() ? MOBILE_ROW_HEIGHT : ROW_HEIGHT;
   const { currentView } = useWorkspaceSlots();
   const taskParams = useViewParams(taskViewDef) ?? {
     projectId: undefined,
@@ -66,9 +71,10 @@ export const SidebarVirtualList = observer(function SidebarVirtualList() {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     overscan: 8,
   });
+  useEffect(() => virtualizer.measure(), [rowHeight, virtualizer]);
 
   // Scroll the active project/task into view only when the navigation target itself
   // changes, plus the active task's project expansion state. Re-running on every

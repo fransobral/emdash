@@ -134,7 +134,7 @@ export const SidebarProjectItem = observer(function SidebarProjectItem({
     <ContextMenu.Root>
       <ContextMenu.Trigger>
         <SidebarMenuRow
-          className={cn('group/row h-8 justify-between flex px-1')}
+          className={cn('group/row h-8 max-md:h-11 justify-between flex px-1')}
           data-active={isProjectActive || undefined}
           isActive={isProjectActive}
           onMouseDown={(e) => e.preventDefault()}

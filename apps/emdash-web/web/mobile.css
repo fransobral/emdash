@@ -80,12 +80,6 @@ html[data-runtime='web'] div:has(> button[aria-label='Minimize']) {
 }
 
 @media (max-width: 767px) {
-  #workspace-mobile-navigation button,
-  #workspace-mobile-navigation [role='button'],
-  #workspace-mobile-navigation a {
-    min-height: 44px;
-  }
-
   button,
   [role='button'],
   a {
