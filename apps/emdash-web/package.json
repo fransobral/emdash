@@ -14,7 +14,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check .",
     "typecheck": "tsgo --noEmit -p tsconfig.server.json && tsgo --noEmit -p tsconfig.web.json",
-    "test": "echo 'no tests yet' && exit 0"
+    "test": "node --test scripts/*.test.mjs"
   },
   "dependencies": {
     "@emdash/chat-ui": "workspace:*",

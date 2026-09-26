@@ -38,28 +38,43 @@ export function WorkspaceLayout({ leftSidebar, mainContent }: WorkspaceLayoutPro
   });
 
   return (
-    <Resizable.Group id="workspace-outer" orientation="horizontal" {...binding.groupProps}>
-      {/* Closed = panel AND handle unmounted (sync contract: never program
-          the panels). */}
+    <>
       {isLeftOpen && (
-        <>
-          <Resizable.Panel
-            {...binding.collapsiblePanelProps}
-            defaultSize={binding.collapsiblePanelProps.defaultSize ?? LEFT_PANEL_DEFAULT_SIZE}
-            minSize={LEFT_SIDEBAR_MIN_SIZE}
-            maxSize={LEFT_SIDEBAR_MAX_SIZE}
-            collapsible
-            collapsedSize="0%"
-          >
-            {leftSidebar}
-          </Resizable.Panel>
-          <Resizable.Handle variant="ghost" className="-ml-px" />
-        </>
+        <button
+          type="button"
+          className="workspace-left-backdrop hidden"
+          aria-label="Close navigation"
+          onClick={() => toggleLeftSidebar()}
+        />
       )}
-      <Resizable.Panel id="workspace-main" minSize={MAIN_PANEL_MIN_SIZE}>
-        {mainContent}
-      </Resizable.Panel>
-    </Resizable.Group>
+      <Resizable.Group id="workspace-outer" orientation="horizontal" {...binding.groupProps}>
+        {/* Closed = panel AND handle unmounted (sync contract: never program
+            the panels). */}
+        {isLeftOpen && (
+          <>
+            <Resizable.Panel
+              {...binding.collapsiblePanelProps}
+              className="workspace-left-panel"
+              defaultSize={binding.collapsiblePanelProps.defaultSize ?? LEFT_PANEL_DEFAULT_SIZE}
+              minSize={LEFT_SIDEBAR_MIN_SIZE}
+              maxSize={LEFT_SIDEBAR_MAX_SIZE}
+              collapsible
+              collapsedSize="0%"
+            >
+              {leftSidebar}
+            </Resizable.Panel>
+            <Resizable.Handle variant="ghost" className="-ml-px" />
+          </>
+        )}
+        <Resizable.Panel
+          id="workspace-main"
+          className="workspace-main-panel"
+          minSize={MAIN_PANEL_MIN_SIZE}
+        >
+          {mainContent}
+        </Resizable.Panel>
+      </Resizable.Group>
+    </>
   );
 }
 
