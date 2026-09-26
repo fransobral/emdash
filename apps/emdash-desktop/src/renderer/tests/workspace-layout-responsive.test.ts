@@ -11,6 +11,25 @@ const layoutState = vi.hoisted(() => ({
 
 const responsiveState = vi.hoisted(() => ({ isMobile: false }));
 
+const navigationState = vi.hoisted(() => {
+  const listeners = new Set<(event: { source: string }) => void>();
+  return {
+    listeners,
+    emit: (source: string) => listeners.forEach((listener) => listener({ source })),
+  };
+});
+
+vi.mock('@core/primitives/navigation/browser/navigation-selectors', () => ({
+  getNavigation: () => ({
+    onDidNavigate: {
+      subscribe: (listener: (event: { source: string }) => void) => {
+        navigationState.listeners.add(listener);
+        return () => navigationState.listeners.delete(listener);
+      },
+    },
+  }),
+}));
+
 vi.mock('@core/features/workbench/contributions/browser/layout-provider', () => ({
   useWorkspaceLayoutContext: () => layoutState,
 }));
@@ -53,6 +72,7 @@ describe('WorkspaceLayout responsive navigation', () => {
     layoutState.isLeftOpen = true;
     layoutState.toggleLeftSidebar.mockReset();
     responsiveState.isMobile = false;
+    navigationState.listeners.clear();
   });
 
   afterEach(() => {
@@ -107,5 +127,28 @@ describe('WorkspaceLayout responsive navigation', () => {
       window.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape' }));
     });
     expect(layoutState.toggleLeftSidebar).toHaveBeenCalledTimes(2);
+  });
+
+  it('closes the mobile drawer after navigating from it', async () => {
+    responsiveState.isMobile = true;
+    renderLayout();
+
+    await act(async () => {
+      navigationState.emit('direct');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(layoutState.toggleLeftSidebar).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the desktop sidebar open across navigation', async () => {
+    renderLayout();
+
+    await act(async () => {
+      navigationState.emit('direct');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(layoutState.toggleLeftSidebar).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,12 @@ test('mobile workspace exposes a reopen control that hides while the drawer is o
   assert.match(styles, /min-height:\s*44px/);
 });
 
+test('the floating reopen button yields to an existing titlebar sidebar toggle', async () => {
+  const styles = await read('apps/emdash-web/web/mobile.css');
+
+  assert.match(styles, /body:has\(\[aria-label='Show left sidebar'\]\) \.emdash-mobile-navigation/);
+});
+
 test('desktop keeps the reopen control hidden outside the mobile breakpoint', async () => {
   const styles = await read('apps/emdash-web/web/mobile.css');
   const mobileBreakpoint = styles.indexOf('@media (max-width: 767px)');
@@ -28,4 +34,12 @@ test('desktop keeps the reopen control hidden outside the mobile breakpoint', as
 
   assert.ok(hiddenButton >= 0 && hiddenButton < mobileBreakpoint);
   assert.match(styles.slice(hiddenButton, mobileBreakpoint), /display:\s*none/);
+});
+
+test('the web build compiles Tailwind utilities used only by the renderer shell', async () => {
+  // Vite's root for emdash-web is outside src/renderer, so Tailwind's automatic
+  // source detection misses it; the drawer's z-index and width then vanish.
+  const styles = await read('apps/emdash-desktop/src/renderer/index.css');
+
+  assert.match(styles, /@source '\.';/);
 });

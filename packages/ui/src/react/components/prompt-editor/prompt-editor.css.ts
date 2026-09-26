@@ -23,6 +23,10 @@ export const editorPlaceholder = style({
   lineHeight: 1.4,
   userSelect: 'none',
   color: vars.foregroundPassive,
+  // 16px on phones: iOS Safari zooms the page when focusing smaller text.
+  '@media': {
+    'screen and (max-width: 47.9375rem)': { fontSize: '1rem', lineHeight: 1.5 },
+  },
 });
 
 // These classes are assigned via TipTap editorProps.attributes.class
@@ -32,4 +36,8 @@ export const promptEditorContentClass = style({
   lineHeight: 1.4,
   color: vars.foreground,
   minHeight: '1.25rem',
+  // 16px on phones: iOS Safari zooms the page when focusing smaller text.
+  '@media': {
+    'screen and (max-width: 47.9375rem)': { fontSize: '1rem', lineHeight: 1.5 },
+  },
 });

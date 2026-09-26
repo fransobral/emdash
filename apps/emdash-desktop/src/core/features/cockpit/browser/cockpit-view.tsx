@@ -7,12 +7,37 @@ import { cockpitViewDef } from '@core/features/cockpit/contributions/views';
 import { getConversationsForTask } from '@core/features/conversations/api/browser/conversation-selectors';
 import { getProjectManagerStore } from '@core/features/projects/api/browser/stores/project-selectors';
 import { getTaskManagerStore } from '@core/features/tasks/api/browser/task-state/task-selectors';
+import { taskViewDef } from '@core/features/tasks/contributions/views';
 import { Titlebar } from '@core/features/workbench/contributions/browser/Titlebar';
+import { useNavigate } from '@core/primitives/navigation/browser/navigation-hooks';
+import { runNotificationOpenHandler } from '@core/primitives/notifications/browser/open-handlers';
 import { registeredTaskData } from '@core/primitives/task-state/browser/task-state';
 import { defineViewRuntime } from '@core/primitives/views/react';
-import { buildTodayDashboard, type TodayProjectInput } from './cockpit-model';
+import { ActiveAgentsList } from './active-agents-list';
+import { buildTodayDashboard, type TodayAgent, type TodayProjectInput } from './cockpit-model';
+
+const ACTIVE_AGENTS_ID = 'cockpit-active-agents';
+
+// Same path notifications use: navigate to the task, then focus the agent's
+// conversation tab once the task composition exists.
+function openAgent(agent: TodayAgent): void {
+  runNotificationOpenHandler(
+    {
+      kind: 'task',
+      projectId: agent.projectId,
+      taskId: agent.taskId,
+      conversationId: agent.id,
+    },
+    `cockpit:${agent.id}`
+  );
+}
+
+function revealActiveAgents(): void {
+  document.getElementById(ACTIVE_AGENTS_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 export const CockpitMainPanel = observer(function CockpitMainPanel() {
+  const { navigate } = useNavigate();
   const projects = [...getProjectManagerStore().projects.values()];
   const dashboardProjects: TodayProjectInput[] = projects.map((project) => {
     const manager = getTaskManagerStore(project.id);
@@ -66,11 +91,13 @@ export const CockpitMainPanel = observer(function CockpitMainPanel() {
             icon={<Bot className="size-4" />}
             label="Trabajando"
             value={dashboard.agents.working}
+            onSelect={revealActiveAgents}
           />
           <SummaryCard
             icon={<AlertCircle className="size-4" />}
             label="Requieren atención"
             value={dashboard.agents.attention + dashboard.agents.error}
+            onSelect={revealActiveAgents}
           />
           <SummaryCard
             icon={<CheckCircle2 className="size-4" />}
@@ -82,6 +109,20 @@ export const CockpitMainPanel = observer(function CockpitMainPanel() {
             label="Proyectos activos"
             value={dashboard.projects.length}
           />
+        </section>
+
+        <section
+          id={ACTIVE_AGENTS_ID}
+          aria-labelledby={`${ACTIVE_AGENTS_ID}-title`}
+          className="scroll-mt-4 overflow-hidden rounded-lg border border-border bg-background-1"
+        >
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 id={`${ACTIVE_AGENTS_ID}-title`} className="font-medium">
+              Agentes activos
+            </h2>
+            <Badge>{dashboard.activeAgents.length}</Badge>
+          </div>
+          <ActiveAgentsList agents={dashboard.activeAgents} onOpen={openAgent} />
         </section>
 
         <section className="rounded-lg border border-border bg-background-1 p-4">
@@ -134,7 +175,14 @@ export const CockpitMainPanel = observer(function CockpitMainPanel() {
                         0
                       );
                       return (
-                        <article key={data.id} className="flex flex-col gap-2 px-4 py-3">
+                        <button
+                          type="button"
+                          key={data.id}
+                          onClick={() =>
+                            navigate(taskViewDef({ projectId: project.id, taskId: data.id }))
+                          }
+                          className="flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-background-2 focus-visible:bg-background-2 focus-visible:outline-none active:bg-background-2"
+                        >
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-medium">{data.name}</span>
                             <Badge tone={statusTone(data.status)}>{data.status}</Badge>
@@ -162,7 +210,7 @@ export const CockpitMainPanel = observer(function CockpitMainPanel() {
                               ))}
                             </div>
                           )}
-                        </article>
+                        </button>
                       );
                     })}
                   </div>
@@ -180,19 +228,33 @@ function SummaryCard({
   icon,
   label,
   value,
+  onSelect,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
+  onSelect?: () => void;
 }) {
-  return (
-    <article className="flex min-h-28 flex-col justify-between rounded-lg border border-border bg-background-1 p-4">
+  const body = (
+    <>
       <span className="flex items-center gap-2 text-xs text-foreground-muted">
         {icon}
         {label}
       </span>
       <strong className="text-3xl font-semibold tabular-nums">{value}</strong>
-    </article>
+    </>
+  );
+  const className =
+    'flex min-h-28 flex-col justify-between rounded-lg border border-border bg-background-1 p-4 text-left';
+  if (!onSelect) return <article className={className}>{body}</article>;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`${className} transition-colors hover:bg-background-2 focus-visible:bg-background-2 focus-visible:outline-none active:bg-background-2`}
+    >
+      {body}
+    </button>
   );
 }
 

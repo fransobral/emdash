@@ -1,6 +1,7 @@
 import { Resizable, useCollapsiblePanelBinding } from '@emdash/ui/react/primitives';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { useWorkspaceLayoutContext } from '@core/features/workbench/contributions/browser/layout-provider';
+import { getNavigation } from '@core/primitives/navigation/browser/navigation-selectors';
 import { useMobileWorkspace } from '@renderer/lib/layout/use-mobile-workspace';
 
 const LEFT_PANEL_DEFAULT_SIZE = '20%';
@@ -49,6 +50,28 @@ export function WorkspaceLayout({ leftSidebar, mainContent }: WorkspaceLayoutPro
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [isLeftOpen, isMobile, toggleLeftSidebar]);
+
+  // Picking a destination in the mobile drawer should reveal it. The check
+  // runs on the next tick because navigating to another project swaps in that
+  // project's chrome state, which may itself report the sidebar as open.
+  const drawer = useRef({ isLeftOpen, toggleLeftSidebar });
+  useEffect(() => {
+    drawer.current = { isLeftOpen, toggleLeftSidebar };
+  });
+  useEffect(() => {
+    if (!isMobile) return;
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = getNavigation().onDidNavigate.subscribe(() => {
+      clearTimeout(pending);
+      pending = setTimeout(() => {
+        if (drawer.current.isLeftOpen) drawer.current.toggleLeftSidebar();
+      }, 0);
+    });
+    return () => {
+      clearTimeout(pending);
+      unsubscribe();
+    };
+  }, [isMobile]);
 
   if (isMobile) {
     return (
