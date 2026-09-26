@@ -114,8 +114,15 @@ html[data-runtime='web'] div:has(> button[aria-label='Minimize']) {
     backdrop-filter: blur(12px);
   }
 
-  body:has(#workspace-mobile-navigation) .emdash-mobile-navigation {
+  /* The floating button only covers views without a titlebar sidebar toggle. */
+  body:has(#workspace-mobile-navigation) .emdash-mobile-navigation,
+  body:has([aria-label='Show left sidebar']) .emdash-mobile-navigation {
     display: none;
+  }
+
+  [aria-label='Show left sidebar'] {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .emdash-mobile-navigation svg {
