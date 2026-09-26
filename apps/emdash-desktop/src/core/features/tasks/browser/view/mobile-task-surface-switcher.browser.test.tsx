@@ -38,6 +38,7 @@ describe('MobileTaskSurfaceSwitcher', () => {
     const buttons = [...host.querySelectorAll<HTMLButtonElement>('button')];
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
       'Workspace',
+      'Chats',
       'Sessions',
       'Files',
       'Changes',
