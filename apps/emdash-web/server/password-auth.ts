@@ -66,7 +66,7 @@ export function createPasswordAuth(options: { password: string; secret: string }
   }
 
   function requireAuthentication(req: IncomingMessage, res: ServerResponse): boolean {
-    if (isAuthenticated(req)) return false;
+    if (isAuthenticated(req) || isPublicInstallAsset(req.url ?? '/')) return false;
     if (req.method === 'GET' || req.method === 'HEAD') {
       res.writeHead(303, { location: '/auth/login', 'cache-control': 'no-store' });
       res.end();
@@ -78,6 +78,20 @@ export function createPasswordAuth(options: { password: string; secret: string }
   }
 
   return { handle, isAuthenticated, requireAuthentication };
+}
+
+const PUBLIC_INSTALL_FILES = new Set(['/manifest.webmanifest', '/favicon.svg']);
+const PUBLIC_INSTALL_ICON = /^\/icons\/[\w-]+\.png$/;
+
+/**
+ * Browsers fetch the web manifest and its icons without cookies, so they must
+ * stay reachable before login for the app to be installable. Only these
+ * static, non-sensitive files are exposed; the shell, worker, bundles, and
+ * APIs remain behind the session.
+ */
+export function isPublicInstallAsset(url: string): boolean {
+  const pathname = url.split('?')[0];
+  return PUBLIC_INSTALL_FILES.has(pathname) || PUBLIC_INSTALL_ICON.test(pathname);
 }
 
 async function readBody(req: IncomingMessage): Promise<string> {
