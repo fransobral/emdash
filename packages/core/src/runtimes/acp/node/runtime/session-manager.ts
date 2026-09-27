@@ -71,6 +71,10 @@ import { SessionsListProjector, type SuspendedIntentListEntry } from './sessions
 import type { AcpRuntimeDeps, AcpStartInput, SendPromptInput } from './types';
 
 const DEFAULT_ACTIVATION_DRAIN_TIMEOUT_MS = 5_000;
+/** How long a prompt or activation waits for the previous session to finish closing. */
+const EVICTION_WAIT_TIMEOUT_MS = 20_000;
+const EVICTION_STUCK_MESSAGE =
+  'The previous agent session has not finished closing. Retry sending your message.';
 
 export type AcpWakeFailure = {
   kind: 'wake-failed';
@@ -212,7 +216,9 @@ export class SessionManager {
   > {
     const entry = this.retained.get(conversationId);
     if (!entry) return acpErr.invalidState(`ACP conversation '${conversationId}' is not attached`);
-    await entry.waitForEviction();
+    if (!(await entry.waitForEvictionWithin(EVICTION_WAIT_TIMEOUT_MS))) {
+      return acpErr.invalidState(EVICTION_STUCK_MESSAGE);
+    }
     return this.activateEntry(entry, false);
   }
 
@@ -330,7 +336,12 @@ export class SessionManager {
   ): Promise<Result<{ queued: boolean }, AcpSendPromptError | AcpWakeFailure>> {
     const entry = this.retained.get(input.conversationId);
     if (!entry || entry.deleted) return acpErr.conversationNotFound(input.conversationId);
-    await entry.waitForEviction();
+    if (!(await entry.waitForEvictionWithin(EVICTION_WAIT_TIMEOUT_MS))) {
+      this.deps.logger.warn('SessionManager: prompt gave up waiting for eviction', {
+        conversationId: input.conversationId,
+      });
+      return acpErr.invalidState(EVICTION_STUCK_MESSAGE);
+    }
     if (!entry.isCurrent()) return acpErr.conversationNotFound(input.conversationId);
 
     const acquired = await entry.acquire();

@@ -248,6 +248,21 @@ export class ConversationHandle {
     return this.evictionPromiseValue ?? Promise.resolve();
   }
 
+  /**
+   * Bounded variant for user-facing calls: a stuck eviction must surface as a
+   * retryable error, not leave a prompt (and the chat's "Working…") hanging.
+   */
+  async waitForEvictionWithin(timeoutMs: number): Promise<boolean> {
+    const pending = this.evictionPromiseValue;
+    if (!pending) return true;
+    try {
+      await runWithTimeout(() => pending, { timeoutMs, clock: this.deps.clock });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   pendingEviction(): Promise<void> | null {
     return this.evictionPromiseValue;
   }

@@ -353,3 +353,21 @@ function readyConfigCatalog(config: SessionConfigState): SessionConfigCatalog {
     config: { modelOptions, efforts, modeOptions, collaborationModeOptions },
   };
 }
+
+// Regression: a prompt waited forever on an eviction that never finished,
+// leaving the chat on "Working…" with no agent process running.
+describe('ConversationHandle eviction wait', () => {
+  it('stops waiting on an eviction that never finishes', async () => {
+    const { handle } = makeHandle();
+    void handle.runEviction(() => new Promise<void>(() => {}));
+
+    await expect(handle.waitForEvictionWithin(20)).resolves.toBe(false);
+  });
+
+  it('reports a finished eviction as settled', async () => {
+    const { handle } = makeHandle();
+    await handle.runEviction(async () => {});
+
+    await expect(handle.waitForEvictionWithin(20)).resolves.toBe(true);
+  });
+});
