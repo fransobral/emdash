@@ -3,7 +3,7 @@ import { isOk } from '@emdash/shared';
 import { noopLogger } from '@emdash/shared/logger';
 import { describe, expect, it, vi } from 'vitest';
 import { FakeAcpAgent } from '#runtimes/acp/node/acp-test-support';
-import { SessionCell, AGENT_TURN_QUIESCE_MS } from './cell';
+import { SessionCell, AGENT_TURN_QUIESCE_MS, USER_WAITING_QUIESCE_MS } from './cell';
 
 function makePendingCell(agent = new FakeAcpAgent()) {
   const cell = new SessionCell({
@@ -516,6 +516,24 @@ describe('SessionCell idle turns and queue commands', () => {
       await Promise.resolve();
       expect(cell.sessionState.agentTurnActive).toBe(true);
       cell.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hands the turn to a waiting user prompt after a short silence', async () => {
+    vi.useFakeTimers();
+    try {
+      const { cell } = makeCell();
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Goal work' });
+      expect(isOk(cell.queuePrompt({ text: 'Stop and explain the next steps' }))).toBe(true);
+      expect(cell.sessionState.queuedPrompts).toHaveLength(1);
+
+      vi.advanceTimersByTime(USER_WAITING_QUIESCE_MS + 50);
+      await Promise.resolve();
+
+      expect(cell.sessionState.agentTurnActive).toBe(false);
+      expect(cell.sessionState.queuedPrompts).toHaveLength(0);
     } finally {
       vi.useRealTimers();
     }

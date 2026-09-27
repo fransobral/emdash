@@ -70,6 +70,9 @@ export type SessionConfigCatalog =
  */
 export const AGENT_TURN_QUIESCE_MS = 60_000;
 
+/** Shorter silence once the user has a prompt waiting behind the agent's turn. */
+export const USER_WAITING_QUIESCE_MS = 2_000;
+
 export class SessionCell {
   readonly machine: SessionMachine;
   readonly transcript: AcpTranscriptParser;
@@ -282,6 +285,8 @@ export class SessionCell {
       ['invalid_state']
     );
     if (!result.success) return result;
+    // A prompt waiting behind an agent-initiated turn shortens its quiesce window.
+    if (this.machine.agentTurnActive && this.quiesceTimer) this.scheduleQuiesce();
     return ok();
   }
 
@@ -671,7 +676,11 @@ export class SessionCell {
       this.transcript.settleTurn({ kind: 'done', reason: 'quiesced' });
       this.emitTranscriptChanged();
       this.applyEvent({ type: 'AgentActivity', active: false });
-    }, AGENT_TURN_QUIESCE_MS);
+    }, this.quiesceDelay());
+  }
+
+  private quiesceDelay(): number {
+    return this.machine.queuedPrompts.length > 0 ? USER_WAITING_QUIESCE_MS : AGENT_TURN_QUIESCE_MS;
   }
 
   private hasWorkInFlight(): boolean {
