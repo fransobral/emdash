@@ -63,6 +63,16 @@ export type SessionConfigCatalog =
       >;
     };
 
+/**
+ * Silence that ends a turn the agent started on its own. Long enough to cover a
+ * command-review round trip (~20s for Codex "Approve for me") so the status does
+ * not flip between working and completed, notifying on every gap.
+ */
+export const AGENT_TURN_QUIESCE_MS = 60_000;
+
+/** Shorter silence once the user has a prompt waiting behind the agent's turn. */
+export const USER_WAITING_QUIESCE_MS = 2_000;
+
 export class SessionCell {
   readonly machine: SessionMachine;
   readonly transcript: AcpTranscriptParser;
@@ -275,6 +285,8 @@ export class SessionCell {
       ['invalid_state']
     );
     if (!result.success) return result;
+    // A prompt waiting behind an agent-initiated turn shortens its quiesce window.
+    if (this.machine.agentTurnActive && this.quiesceTimer) this.scheduleQuiesce();
     return ok();
   }
 
@@ -654,10 +666,28 @@ export class SessionCell {
     this.quiesceTimer = setTimeout(() => {
       this.quiesceTimer = null;
       if (!this.machine.agentTurnActive) return;
+      // Agent-initiated turns (e.g. Codex goal mode) have no prompt response to
+      // end them, so silence is the only signal. Waiting on a reviewer or a long
+      // command is not the end of the turn: keep it open while work is in flight.
+      if (this.hasWorkInFlight()) {
+        this.scheduleQuiesce();
+        return;
+      }
       this.transcript.settleTurn({ kind: 'done', reason: 'quiesced' });
       this.emitTranscriptChanged();
       this.applyEvent({ type: 'AgentActivity', active: false });
-    }, 250);
+    }, this.quiesceDelay());
+  }
+
+  private quiesceDelay(): number {
+    return this.machine.queuedPrompts.length > 0 ? USER_WAITING_QUIESCE_MS : AGENT_TURN_QUIESCE_MS;
+  }
+
+  private hasWorkInFlight(): boolean {
+    if (this.machine.pendingPermissions.length > 0) return true;
+    return (this.transcript.activeTurn?.items ?? []).some(
+      (item) => 'status' in item && item.status === 'running'
+    );
   }
 
   private clearQuiesce(): void {

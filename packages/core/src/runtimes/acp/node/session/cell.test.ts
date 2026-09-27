@@ -3,7 +3,7 @@ import { isOk } from '@emdash/shared';
 import { noopLogger } from '@emdash/shared/logger';
 import { describe, expect, it, vi } from 'vitest';
 import { FakeAcpAgent } from '#runtimes/acp/node/acp-test-support';
-import { SessionCell } from './cell';
+import { SessionCell, AGENT_TURN_QUIESCE_MS, USER_WAITING_QUIESCE_MS } from './cell';
 
 function makePendingCell(agent = new FakeAcpAgent()) {
   const cell = new SessionCell({
@@ -428,7 +428,7 @@ describe('SessionCell idle turns and queue commands', () => {
       expect(cell.sessionState.agentTurnActive).toBe(true);
       expect(cell.history().active?.initiator).toBe('agent');
 
-      vi.advanceTimersByTime(300);
+      vi.advanceTimersByTime(AGENT_TURN_QUIESCE_MS + 50);
       await Promise.resolve();
 
       expect(cell.sessionState.agentTurnActive).toBe(false);
@@ -437,6 +437,103 @@ describe('SessionCell idle turns and queue commands', () => {
         kind: 'done',
         reason: 'quiesced',
       });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Regression: agent-initiated turns (e.g. Codex goal mode) flipped between
+  // working and completed on every short silence, notifying the user each time.
+  it('keeps an agent-initiated turn working through short silences', async () => {
+    vi.useFakeTimers();
+    try {
+      const { cell } = makeCell();
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Working on it' });
+
+      vi.advanceTimersByTime(25_000);
+      await Promise.resolve();
+      expect(cell.sessionState.agentTurnActive).toBe(true);
+      expect(cell.sessionState.isGenerating).toBe(true);
+
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: ' still going' });
+      vi.advanceTimersByTime(AGENT_TURN_QUIESCE_MS - 1_000);
+      await Promise.resolve();
+      expect(cell.sessionState.agentTurnActive).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never settles an agent-initiated turn while a tool call is still running', async () => {
+    vi.useFakeTimers();
+    try {
+      const { cell } = makeCell();
+      cell.push({
+        kind: 'tool_call',
+        toolCallId: 'long-command',
+        title: 'Run tests',
+        toolKind: 'execute',
+        status: 'in_progress',
+        parentToolCallId: null,
+        diffs: [],
+        locations: [],
+      });
+
+      vi.advanceTimersByTime(AGENT_TURN_QUIESCE_MS * 3);
+      await Promise.resolve();
+      expect(cell.sessionState.agentTurnActive).toBe(true);
+
+      cell.push({
+        kind: 'tool_update',
+        toolCallId: 'long-command',
+        parentToolCallId: null,
+        status: 'completed',
+      });
+      vi.advanceTimersByTime(AGENT_TURN_QUIESCE_MS + 50);
+      await Promise.resolve();
+      expect(cell.sessionState.agentTurnActive).toBe(false);
+      expect(cell.history().committed.at(-1)?.outcome).toEqual({
+        kind: 'done',
+        reason: 'quiesced',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never settles an agent-initiated turn while a permission is pending', async () => {
+    vi.useFakeTimers();
+    try {
+      const { cell } = makeCell();
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Need approval' });
+      void cell.requestPermission({
+        sessionId: 'session-1',
+        toolCall: { toolCallId: 'tool-1', title: 'Run a command', kind: 'execute' },
+        options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' as PermissionOptionKind }],
+      });
+
+      vi.advanceTimersByTime(AGENT_TURN_QUIESCE_MS * 2);
+      await Promise.resolve();
+      expect(cell.sessionState.agentTurnActive).toBe(true);
+      cell.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hands the turn to a waiting user prompt after a short silence', async () => {
+    vi.useFakeTimers();
+    try {
+      const { cell } = makeCell();
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Goal work' });
+      expect(isOk(cell.queuePrompt({ text: 'Stop and explain the next steps' }))).toBe(true);
+      expect(cell.sessionState.queuedPrompts).toHaveLength(1);
+
+      vi.advanceTimersByTime(USER_WAITING_QUIESCE_MS + 50);
+      await Promise.resolve();
+
+      expect(cell.sessionState.agentTurnActive).toBe(false);
+      expect(cell.sessionState.queuedPrompts).toHaveLength(0);
     } finally {
       vi.useRealTimers();
     }

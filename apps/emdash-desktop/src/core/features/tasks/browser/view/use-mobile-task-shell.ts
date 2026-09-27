@@ -1,17 +1,5 @@
-import { useSyncExternalStore } from 'react';
-
-const MOBILE_TASK_SHELL_QUERY = '(max-width: 767px)';
-
-function subscribe(onChange: () => void): () => void {
-  const query = window.matchMedia(MOBILE_TASK_SHELL_QUERY);
-  query.addEventListener('change', onChange);
-  return () => query.removeEventListener('change', onChange);
-}
-
-function getSnapshot(): boolean {
-  return window.matchMedia(MOBILE_TASK_SHELL_QUERY).matches;
-}
+import { useMobileViewport } from '@core/primitives/styling/browser/use-mobile-viewport';
 
 export function useMobileTaskShell(): boolean {
-  return useSyncExternalStore(subscribe, getSnapshot, () => false);
+  return useMobileViewport();
 }

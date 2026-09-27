@@ -37,6 +37,20 @@ export const MobileTaskShell = observer(function MobileTaskShell() {
         {surface === 'workspace' && <TaskMainColumn mobileWorkspace />}
         {surface === 'sessions' && <TerminalsPanel />}
         {(surface === 'files' || surface === 'changes') && <TaskSidebar />}
+        {surface === 'chats' && (
+          // Picking a conversation opens its tab; return to the workspace so the
+          // chat is actually visible instead of leaving the list on screen.
+          <div
+            className="h-full"
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest('[data-conversation-id]')) {
+                taskView.chrome.commands.collapseSidebar();
+              }
+            }}
+          >
+            <TaskSidebar />
+          </div>
+        )}
       </main>
       <MobileTaskSurfaceSwitcher active={surface} onSelect={selectSurface} />
     </div>

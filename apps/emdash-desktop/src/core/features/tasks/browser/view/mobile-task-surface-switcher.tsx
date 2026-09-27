@@ -1,4 +1,4 @@
-import { FileDiff, FolderOpen, MessagesSquare, SquareTerminal } from 'lucide-react';
+import { FileDiff, FolderOpen, List, MessagesSquare, SquareTerminal } from 'lucide-react';
 import { cn } from '@core/primitives/styling/browser/cn';
 import { mobileTaskSurfaceItems, type MobileTaskSurface } from './mobile-task-surfaces';
 
@@ -6,6 +6,7 @@ export type { MobileTaskSurface } from './mobile-task-surfaces';
 
 const icons = {
   workspace: MessagesSquare,
+  chats: List,
   sessions: SquareTerminal,
   files: FolderOpen,
   changes: FileDiff,
@@ -21,7 +22,7 @@ export function MobileTaskSurfaceSwitcher({
   return (
     <nav
       aria-label="Task surfaces"
-      className="grid shrink-0 grid-cols-4 gap-1 border-t border-border bg-background px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]"
+      className="grid shrink-0 grid-cols-5 gap-1 border-t border-border bg-background px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]"
     >
       {mobileTaskSurfaceItems.map(({ id, label }) => {
         const Icon = icons[id];

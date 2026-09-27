@@ -188,6 +188,7 @@ const ConversationRow = observer(function ConversationRow({
         <div
           role="button"
           tabIndex={0}
+          data-conversation-id={conversationId}
           onClick={() => openConversation({ conversationId }, { preview: true })}
           onDoubleClick={handleDoubleClick}
           onKeyDown={(e) => {
@@ -197,7 +198,7 @@ const ConversationRow = observer(function ConversationRow({
             }
           }}
           className={cn(
-            'group/conversation flex h-8 w-full items-center gap-2 rounded-md pl-2 text-left text-sm text-foreground-muted transition-colors hover:bg-background-1 hover:text-foreground',
+            'group/conversation flex h-8 max-md:h-11 w-full items-center gap-2 rounded-md pl-2 text-left text-sm text-foreground-muted transition-colors hover:bg-background-1 hover:text-foreground',
             isActive && 'bg-background-2 text-foreground hover:bg-background-2'
           )}
         >

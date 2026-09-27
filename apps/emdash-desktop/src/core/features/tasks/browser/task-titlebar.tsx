@@ -83,11 +83,11 @@ const PendingTaskTitlebar = observer(function PendingTaskTitlebar({
   return (
     <Titlebar
       leftSlot={
-        <div className="flex items-center gap-1 px-2 text-sm text-foreground-muted">
-          <span className="flex items-center gap-1">
+        <div className="flex min-w-0 items-center gap-1 px-2 text-sm text-foreground-muted">
+          <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
             <button
               type="button"
-              className="text-sm text-foreground-passive hover:text-foreground"
+              className="max-w-40 min-w-0 truncate text-sm whitespace-nowrap text-foreground-passive hover:text-foreground max-md:max-w-24"
               onClick={() => navigate(projectViewDef({ projectId }))}
             >
               {projectName}
@@ -143,10 +143,10 @@ const ActiveTaskTitlebar = observer(function ActiveTaskTitlebar({
   return (
     <Titlebar
       leftSlot={
-        <div className="flex items-center gap-1 px-2">
+        <div className="flex min-w-0 items-center gap-1 px-2 whitespace-nowrap">
           <button
             type="button"
-            className="text-sm text-foreground-passive hover:text-foreground"
+            className="max-w-40 min-w-0 truncate text-sm whitespace-nowrap text-foreground-passive hover:text-foreground max-md:max-w-24"
             onClick={() => navigate(projectViewDef({ projectId }))}
           >
             {projectName}
@@ -158,7 +158,7 @@ const ActiveTaskTitlebar = observer(function ActiveTaskTitlebar({
                 render={
                   <Popover.Trigger className="flex items-center gap-1 text-sm text-foreground-muted hover:text-foreground">
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="max-w-56 truncate">{taskDisplayName(taskStore)}</span>
+                      <span className="max-w-56 truncate max-md:max-w-36">{taskDisplayName(taskStore)}</span>
                       <ConnectionStatusDot state={workspace.connectionState} />
                     </span>
                     <ChevronDown className="size-3.5 shrink-0" />
