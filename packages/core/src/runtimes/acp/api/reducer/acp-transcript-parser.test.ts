@@ -1051,6 +1051,14 @@ function sessionInfoUpdate(title: string): SessionUpdate {
   } as unknown as SessionUpdate;
 }
 
+function goalUpdate(goal: { status: string } | null): SessionUpdate {
+  return {
+    sessionUpdate: 'session_info_update',
+    sessionId: 'sess-1',
+    _meta: { goal },
+  } as unknown as SessionUpdate;
+}
+
 describe('AcpTranscriptParser – session slices', () => {
   // ── Config derivation ──────────────────────────────────────────────────────
 
@@ -1254,6 +1262,25 @@ describe('AcpTranscriptParser – session slices', () => {
     p.push(sessionInfoUpdate('First'));
     p.push(sessionInfoUpdate('Second'));
     expect(p.title).toBe('Second');
+  });
+
+  // Codex publishes its thread goal as session_info_update._meta.goal.
+  it('session_info_update tracks the agent goal status', () => {
+    const p = new AcpTranscriptParser(deps());
+    expect(p.goalStatus).toBeNull();
+    p.push(goalUpdate({ status: 'active' }));
+    expect(p.goalStatus).toBe('active');
+    p.push(goalUpdate({ status: 'complete' }));
+    expect(p.goalStatus).toBe('complete');
+    p.push(goalUpdate(null));
+    expect(p.goalStatus).toBeNull();
+  });
+
+  it('a goal update does not clear the session title', () => {
+    const p = new AcpTranscriptParser(deps());
+    p.push(sessionInfoUpdate('Kept title'));
+    p.push(goalUpdate({ status: 'active' }));
+    expect(p.title).toBe('Kept title');
   });
 
   // ── No turn boundary side-effect ───────────────────────────────────────────

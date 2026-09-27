@@ -150,6 +150,11 @@ export type NormalizedEvent =
       kind: 'title';
       title: string;
     }
+  | {
+      /** Agent-side thread goal (Codex goal mode); null when cleared. */
+      kind: 'goal';
+      status: string | null;
+    }
   | { kind: 'ignored' };
 
 export type EnrichHook = (event: NormalizedEvent, raw: SessionUpdate) => NormalizedEvent;

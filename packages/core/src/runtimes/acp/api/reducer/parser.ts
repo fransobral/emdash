@@ -164,6 +164,11 @@ export class AcpTranscriptParser {
     return this.state.title;
   }
 
+  /** Agent-side goal status (e.g. Codex goal mode 'active'), or null when none. */
+  get goalStatus(): string | null {
+    return this.state.goalStatus;
+  }
+
   get agents(): readonly AgentState[] {
     return this.state.agents;
   }

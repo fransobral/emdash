@@ -753,7 +753,10 @@ export class SessionManager {
         state.isGenerating ||
         state.pendingPermissions.length > 0 ||
         state.queuedPrompts.length > 0 ||
-        state.backgroundAgentCount > 0,
+        state.backgroundAgentCount > 0 ||
+        // An active goal keeps continuing on its own; suspending the process
+        // would silently end it, so idle eviction must not reclaim it.
+        record.cell.goalActive,
     };
   }
 

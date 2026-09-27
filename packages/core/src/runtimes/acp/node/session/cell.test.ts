@@ -539,6 +539,18 @@ describe('SessionCell idle turns and queue commands', () => {
     }
   });
 
+  it('reports an active agent goal so idle eviction keeps the session alive', () => {
+    const { cell } = makeCell();
+    expect(cell.goalActive).toBe(false);
+    cell.push({ kind: 'goal', status: 'active' });
+    expect(cell.goalActive).toBe(true);
+    expect(cell.sessionState.agentTurnActive).toBe(false);
+    cell.push({ kind: 'goal', status: 'blocked' });
+    expect(cell.goalActive).toBe(false);
+    cell.push({ kind: 'goal', status: null });
+    expect(cell.goalActive).toBe(false);
+  });
+
   it('queues, edits, removes, and reorders queued prompts', () => {
     const { cell } = makeCell();
 
