@@ -62,6 +62,7 @@ export interface ParserState {
   config: SessionConfigState;
   usage: SessionUsage | null;
   title: string | null;
+  goalStatus: string | null;
   pendingModeId: string | null;
   segment: SegmentState;
   agents: AgentState[];
@@ -90,6 +91,7 @@ export function initialState(): ParserState {
     config: initialSessionConfigState,
     usage: null,
     title: null,
+    goalStatus: null,
     pendingModeId: null,
     segment: initialSegment(),
     agents: [],
@@ -402,6 +404,8 @@ function reduceInput(s: ParserState, input: ReducerInput, deps: ReducerDeps): Pa
       return { ...s, usage: event.usage };
     case 'title':
       return { ...s, title: event.title };
+    case 'goal':
+      return { ...s, goalStatus: event.status };
     case 'mcp_startup_failure':
     case 'ignored':
       return s;

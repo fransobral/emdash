@@ -233,7 +233,15 @@ export function decodeSessionUpdate(update: SessionUpdate): NormalizedEvent {
     }
 
     case 'session_info_update': {
-      const raw = update as unknown as { title?: string };
+      const raw = update as unknown as {
+        title?: string;
+        _meta?: { goal?: { status?: unknown } | null };
+      };
+      // Codex publishes its thread goal here (null once the goal is cleared).
+      if (raw._meta && 'goal' in raw._meta) {
+        const status = raw._meta.goal?.status;
+        return { kind: 'goal', status: typeof status === 'string' ? status : null };
+      }
       if (!raw.title) return { kind: 'ignored' };
       return { kind: 'title', title: raw.title };
     }

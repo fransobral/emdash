@@ -195,6 +195,42 @@ describe('AcpRuntime session manager', () => {
     expect(h.lastChild.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
+  // Regression: idle eviction killed the agent process while a Codex goal was
+  // active, silently ending autonomous work that should continue overnight.
+  it('keeps a session with an active agent goal alive through idle sweeps', async () => {
+    const clock = createManualClock(0);
+    const h = makeAcpHarness({
+      clock,
+      lifecycle: { session: { kind: 'idle-after', outputMs: 1_000 }, sweepIntervalMs: 100 },
+    });
+    const rt = new AcpRuntime(h.deps);
+    await rt.launchSession(makeStartInput({ conversationId: 'conv-goal' }));
+    const client = h.client();
+    const goal = (status: string | null) =>
+      client.sessionUpdate({
+        sessionId: 'session-1',
+        update: {
+          sessionUpdate: 'session_info_update',
+          sessionId: 'session-1',
+          _meta: { goal: status === null ? null : { status } },
+        } as never,
+      });
+
+    await goal('active');
+    await clock.advanceBy(5_000);
+    await rt.manager.sweepNow();
+    expect(peek(rt.sessionsListLiveModel().states.list)['conv-goal']).not.toMatchObject({
+      suspended: true,
+    });
+
+    await goal('complete');
+    await clock.advanceBy(1_200);
+    await rt.manager.sweepNow();
+    expect(peek(rt.sessionsListLiveModel().states.list)['conv-goal']).toMatchObject({
+      suspended: true,
+    });
+  });
+
   it('wakes a suspended conversation through loadSession before delivering a prompt', async () => {
     const h = makeAcpHarness({ lifecycle: { connectionIdleTtlMs: 0 } });
     const rt = new AcpRuntime(h.deps);

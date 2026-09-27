@@ -149,6 +149,11 @@ export class SessionCell {
     };
   }
 
+  /** True while the agent pursues its own goal (Codex goal mode) between turns. */
+  get goalActive(): boolean {
+    return this.transcript.goalStatus === 'active';
+  }
+
   get usage(): SessionUsage | null {
     return this.transcript.usage;
   }
