@@ -551,6 +551,54 @@ describe('SessionCell idle turns and queue commands', () => {
     expect(cell.goalActive).toBe(false);
   });
 
+  // Regression: Stop in a Codex goal chat interrupted the turn, but the still
+  // active goal immediately started another one, so Stop looked broken.
+  it('pauses an active agent goal before cancelling the turn', async () => {
+    const { cell, agent } = makeCell();
+    const calls: string[] = [];
+    const extMethod = vi.fn(async (method: string, params: Record<string, unknown>) => {
+      calls.push(`${method}:${String(params.action)}`);
+      return {};
+    });
+    Object.assign(agent, { extMethod });
+    agent.cancel = vi.fn(async () => {
+      calls.push('cancel');
+    });
+    cell.push({ kind: 'goal', status: 'active' });
+    cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Goal work' });
+
+    const result = await cell.cancel();
+
+    expect(isOk(result)).toBe(true);
+    expect(extMethod).toHaveBeenCalledWith('_session/goal', {
+      sessionId: expect.any(String),
+      action: 'pause',
+    });
+    expect(calls).toEqual(['_session/goal:pause', 'cancel']);
+    expect(cell.sessionState.agentTurnActive).toBe(false);
+  });
+
+  it('pauses an active goal even when no turn is running between continuations', async () => {
+    const { cell, agent } = makeCell();
+    const extMethod = vi.fn(async () => ({}));
+    Object.assign(agent, { extMethod });
+    cell.push({ kind: 'goal', status: 'active' });
+
+    const result = await cell.cancel();
+
+    expect(isOk(result)).toBe(true);
+    expect(extMethod).toHaveBeenCalledOnce();
+  });
+
+  it('offers Stop while an agent goal is active, even between turns', () => {
+    const { cell } = makeCell();
+    expect(cell.sessionState.canCancel).toBe(false);
+    cell.push({ kind: 'goal', status: 'active' });
+    expect(cell.sessionState.canCancel).toBe(true);
+    cell.push({ kind: 'goal', status: 'paused' });
+    expect(cell.sessionState.canCancel).toBe(false);
+  });
+
   it('queues, edits, removes, and reorders queued prompts', () => {
     const { cell } = makeCell();
 
