@@ -14,8 +14,12 @@ import {
   streamTransport,
   type WireTransport,
 } from '@emdash/wire/rpc';
+import { installStaleSocketGuard } from './stale-socket-guard';
 
 const TOKEN_STORAGE_KEY = 'emdash-web-token';
+
+/** The socket currently carrying the wire connection, for the stale-socket guard. */
+let currentSocket: WebSocket | null = null;
 
 export function captureTokenFromUrl(): void {
   const params = new URLSearchParams(window.location.search);
@@ -89,6 +93,7 @@ function openWebSocketTransport(token: string): Promise<WireTransport> {
     ws.onopen = () => {
       ws.onopen = null;
       ws.onerror = null;
+      currentSocket = ws;
       const { input, output } = browserStreamAdapter(ws);
       resolve(streamTransport(input, output));
     };
@@ -108,6 +113,7 @@ function openWebSocketTransport(token: string): Promise<WireTransport> {
 }
 
 export function seedWebWire(): void {
+  installStaleSocketGuard({ getSocket: () => currentSocket });
   seedWireConnection(async () => {
     const token = getWebToken();
     if (!token) {
