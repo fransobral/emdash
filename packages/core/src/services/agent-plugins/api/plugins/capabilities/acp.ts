@@ -63,6 +63,8 @@ export interface AcpAgentApi {
   setSessionMode?(params: SetSessionModeRequest): Promise<SetSessionModeResponse>;
   /** Optional — only available when the agent advertises the `session.close` capability. */
   closeSession?(params: CloseSessionRequest): Promise<CloseSessionResponse | void>;
+  /** Optional — agent-specific extension requests (e.g. Codex `_session/goal`). */
+  extMethod?(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>>;
 }
 
 /** The manager supplies this factory; the plugin forwards it into ClientSideConnection. */

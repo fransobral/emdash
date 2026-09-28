@@ -130,6 +130,8 @@ export class SessionCell {
     const state = this.machine.sessionState();
     return {
       ...state,
+      // Stop also pauses an active agent goal, so it stays available between turns.
+      canCancel: state.canCancel || this.goalActive,
       historyRevision: this.transcript.historyRevision,
       // Partial replay is never an authoritative transcript position.
       ...(state.lifecycle === 'replaying' ? {} : { transcript: this.transcript.snapshot }),
@@ -249,6 +251,8 @@ export class SessionCell {
 
     const previousRunningAgentCount = this.lastRunningAgentCount;
     this.transcript.pushEvent(event);
+    // Goal status feeds canCancel and idle eviction, which live outside the transcript.
+    if (event.kind === 'goal') this.deps.callbacks?.onSessionStateChanged?.();
     if (event.kind === 'config') this.configCatalogState = 'ready';
     this.dispatchAgentsChangedIfNeeded(previousRunningAgentCount);
     if (idleTranscriptEvent) this.scheduleQuiesce();
@@ -326,15 +330,35 @@ export class SessionCell {
   }
 
   async cancel(): Promise<Result<void, AcpCancelTurnError>> {
+    // An active agent goal (Codex goal mode) starts a new turn as soon as the
+    // current one ends, so Stop must pause it first or it looks ignored.
+    const pausedGoal = await this.pauseActiveGoal();
     const dispatchResult = this.dispatchFor<AcpCancelTurnError>({ type: 'Cancel' }, [
       'invalid_state',
     ]);
-    if (!dispatchResult.success) return dispatchResult;
+    if (!dispatchResult.success) return pausedGoal ? ok() : dispatchResult;
     try {
       await this.deps.agent.cancel({ sessionId: this.acpSessionId });
       return ok();
     } catch (e) {
       return acpErr.cancelFailed(toSerializedError(e));
+    }
+  }
+
+  private async pauseActiveGoal(): Promise<boolean> {
+    if (!this.goalActive || !this.deps.agent.extMethod) return false;
+    try {
+      await this.deps.agent.extMethod('_session/goal', {
+        sessionId: this.acpSessionId,
+        action: 'pause',
+      });
+      return true;
+    } catch (error) {
+      this.deps.logger.warn('SessionCell: failed to pause agent goal on cancel', {
+        conversationId: this.conversationId,
+        error: String(error),
+      });
+      return false;
     }
   }
 
