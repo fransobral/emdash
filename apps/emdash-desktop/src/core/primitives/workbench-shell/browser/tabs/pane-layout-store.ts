@@ -1,4 +1,12 @@
-import { action, computed, makeObservable, observable, reaction, untracked } from 'mobx';
+import {
+  action,
+  comparer,
+  computed,
+  makeObservable,
+  observable,
+  reaction,
+  untracked,
+} from 'mobx';
 import { PaneStore } from '@core/primitives/workbench-shell/browser/tabs/pane-store';
 import type { OpenTarget, TabViewContext } from './core/tab-provider';
 import type {
@@ -54,6 +62,12 @@ export class PaneLayoutStore<R extends TabRegistry = TabRegistry> {
   private readonly _ctx: TabViewContext;
   private readonly _snapshotMemento: PaneLayoutSnapshotMemento | undefined;
   private _persistDisposer: (() => void) | null = null;
+  private _remoteSyncDisposer: (() => void) | null = null;
+  /**
+   * Tab ids in the last persisted document this store reconciled with. A tab
+   * missing from a newer document was closed elsewhere only if it was here.
+   */
+  private _syncedTabIds = new Set<string>();
   private readonly _autoCloseDisposers = new Map<string, () => void>();
   private readonly _onActiveTabChange: ((tabId: string | undefined) => void) | undefined;
   private readonly _onPaneDestroyed: ((paneId: string) => void) | undefined;
@@ -99,6 +113,7 @@ export class PaneLayoutStore<R extends TabRegistry = TabRegistry> {
       setActiveGroup: action,
       setViewActive: action,
       restoreSnapshot: action,
+      applyPersistedTabs: action,
       open: action,
     });
 
@@ -394,15 +409,24 @@ export class PaneLayoutStore<R extends TabRegistry = TabRegistry> {
     const snapshot = memento.read();
     if (snapshot.groups.length === 0) return false;
     this.restoreSnapshot(snapshot);
+    this._syncedTabIds = tabIdsOf(snapshot);
     return true;
   }
 
-  /** Starts persisting snapshot changes. Call after hydrate() so the baseline
-   * does not trigger a spurious save. */
+  /** Starts persisting snapshot changes and following changes other devices
+   * save to the same document. Call after hydrate() so the baseline does not
+   * trigger a spurious save. */
   startPersistence(): void {
     const memento = this._snapshotMemento;
     if (!memento) return;
-    this._persistDisposer?.();
+    this.stopPersistence();
+    // Catch up on anything saved elsewhere while this view was suspended.
+    this.applyPersistedTabs(memento.read());
+    this._remoteSyncDisposer = reaction(
+      () => memento.read(),
+      (doc) => this.applyPersistedTabs(doc),
+      { equals: comparer.structural }
+    );
     this._persistDisposer = memento.autoPersist(() => {
       const snapshot = this.snapshot;
       // Carry document fields the store does not own (the schema version tag)
@@ -414,6 +438,34 @@ export class PaneLayoutStore<R extends TabRegistry = TabRegistry> {
   stopPersistence(): void {
     this._persistDisposer?.();
     this._persistDisposer = null;
+    this._remoteSyncDisposer?.();
+    this._remoteSyncDisposer = null;
+  }
+
+  /**
+   * Reconciles open tabs with the persisted document, which another device
+   * may have changed: opens tabs it added and closes tabs it closed. The
+   * active tab and pane arrangement stay local to each device. Tabs this
+   * store opened but has not seen persisted yet are kept.
+   */
+  applyPersistedTabs(doc: TabGroupsSnapshot): void {
+    const persistedIds = tabIdsOf(doc);
+    for (const { pane } of [...this.groups]) {
+      for (const tabId of [...pane.tabOrder]) {
+        if (this._syncedTabIds.has(tabId) && !persistedIds.has(tabId)) pane.closeTab(tabId);
+      }
+    }
+    for (const group of doc.groups) {
+      const target =
+        this.groups.find((g) => g.paneId === group.groupId)?.pane ?? this.focusedPane;
+      for (const desc of group.tabManager.tabs) {
+        const alreadyOpen = this.groups.some(
+          ({ pane }) => pane.entries.has(desc.tabId) || pane.hasDescriptorResource(desc)
+        );
+        if (!alreadyOpen) target.adoptDescriptor(desc);
+      }
+    }
+    this._syncedTabIds = persistedIds;
   }
 
   dispose(): void {
@@ -487,4 +539,8 @@ export class PaneLayoutStore<R extends TabRegistry = TabRegistry> {
     );
     this._autoCloseDisposers.set(paneId, disposer);
   }
+}
+
+function tabIdsOf(doc: TabGroupsSnapshot): Set<string> {
+  return new Set(doc.groups.flatMap((g) => g.tabManager.tabs.map((t) => t.tabId)));
 }

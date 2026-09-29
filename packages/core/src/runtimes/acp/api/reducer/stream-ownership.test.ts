@@ -25,7 +25,7 @@ const tool = (toolCallId = 'tool', parentToolCallId: string | null = null): Norm
   diffs: [],
   locations: [],
 });
-const update = (toolCallId = 'tool'): NormalizedEvent => ({
+const update = (toolCallId = 'tool'): Extract<NormalizedEvent, { kind: 'tool_update' }> => ({
   kind: 'tool_update',
   toolCallId,
   parentToolCallId: null,

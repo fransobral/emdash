@@ -1,8 +1,10 @@
 import { createPluginRegistry } from '@emdash/shared/plugins';
 import { describe, expect, it } from 'vitest';
 import type { CLIAgentPluginProvider } from '#services/agent-plugins/api/plugins';
-import { SESSION_IDLE_MS } from '#services/session-lifecycle/api';
-import { ACP_CONNECTION_IDLE_TTL_MS, acpWorkerSpec, type AcpWorkerSpecInput } from './worker-spec';
+import {
+  ACP_CONNECTION_IDLE_TTL_MS,
+  ACP_SESSION_IDLE_MS,
+  acpWorkerSpec, type AcpWorkerSpecInput } from './worker-spec';
 
 describe('acpWorkerSpec', () => {
   it('bakes the session idle window and connection TTL into the config', () => {
@@ -24,11 +26,11 @@ describe('acpWorkerSpec', () => {
       attachmentsDir: '/data/attachments',
       intentsFilePath: '/data/acp-intents.json',
       lifecycle: {
-        session: { kind: 'idle-after', outputMs: SESSION_IDLE_MS },
+        session: { kind: 'idle-after', outputMs: ACP_SESSION_IDLE_MS },
         connectionIdleTtlMs: ACP_CONNECTION_IDLE_TTL_MS,
       },
     });
-    expect(SESSION_IDLE_MS).toBe(60 * 60_000);
+    expect(ACP_SESSION_IDLE_MS).toBe(6 * 60 * 60_000);
     expect(ACP_CONNECTION_IDLE_TTL_MS).toBe(120_000);
   });
 });
