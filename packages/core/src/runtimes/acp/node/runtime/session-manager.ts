@@ -219,6 +219,11 @@ export class SessionManager {
     if (!(await entry.waitForEvictionWithin(EVICTION_WAIT_TIMEOUT_MS))) {
       return acpErr.invalidState(EVICTION_STUCK_MESSAGE);
     }
+    // Waking a suspended chat (someone opened it) is activity. Without it the
+    // key stays tombstoned from its last eviction, the replay's output is
+    // dropped as a straggler, and the next sweep suspends it again while it is
+    // on screen: an evict/wake loop that parks new prompts in the queue.
+    this.lifecycle.recordInput(conversationId);
     return this.activateEntry(entry, false);
   }
 
