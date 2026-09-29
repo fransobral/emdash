@@ -1136,7 +1136,7 @@ export class AcpChatStore {
   }
 
   private _toastError(title: string, error: unknown): void {
-    toast.error(title, { description: error instanceof Error ? error.message : undefined });
+    toast.error(title, { description: errorDescription(error) });
   }
 }
 
@@ -1195,4 +1195,14 @@ function toLoadError(error: unknown): AcpLoadError {
     return { kind: 'auth_required', message };
   }
   return { kind: 'generic', message };
+}
+
+/** Wire failures arrive as plain `{ message }` objects, not Error instances. */
+function errorDescription(error: unknown): string | undefined {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const { message } = error as { message: unknown };
+    if (typeof message === 'string' && message) return message;
+  }
+  return undefined;
 }
