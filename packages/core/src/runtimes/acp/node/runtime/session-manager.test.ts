@@ -167,6 +167,35 @@ describe('AcpRuntime session manager', () => {
     });
   });
 
+  it('keeps a chat woken to show its history alive through the next idle sweep', async () => {
+    const clock = createManualClock(0);
+    const h = makeAcpHarness({
+      clock,
+      lifecycle: { session: { kind: 'idle-after', outputMs: 1_000 }, sweepIntervalMs: 100 },
+    });
+    const rt = new AcpRuntime(h.deps);
+    await rt.launchSession(makeStartInput({ conversationId: 'conv-reopen' }));
+    await clock.advanceBy(1_200);
+    await rt.manager.sweepNow();
+    const list = () => peek(rt.sessionsListLiveModel().states.list)['conv-reopen'];
+    expect(list()).toMatchObject({ suspended: true });
+
+    h.agent.loadSession.mockImplementationOnce(async (params: { sessionId: string }) => {
+      await h.client().sessionUpdate({
+        sessionId: params.sessionId,
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'old' } },
+      });
+      return {};
+    });
+    expect((await rt.loadHistory('conv-reopen')).success).toBe(true);
+    expect(list()?.suspended ?? false).toBe(false);
+
+    await clock.advanceBy(200);
+    await rt.manager.sweepNow();
+    expect(list()?.suspended ?? false).toBe(false);
+    await rt.dispose();
+  });
+
   it('deactivates idle sessions and releases the pooled ACP process after its TTL', async () => {
     const clock = createManualClock(0);
     const h = makeAcpHarness({
