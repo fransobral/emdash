@@ -73,6 +73,13 @@ export const AGENT_TURN_QUIESCE_MS = 60_000;
 /** Shorter silence once the user has a prompt waiting behind the agent's turn. */
 export const USER_WAITING_QUIESCE_MS = 2_000;
 
+/**
+ * A running tool keeps an agent-initiated turn open, but only while the agent
+ * shows some sign of life. A tool whose completion never arrives (lost or
+ * replayed out of order) must not park the user's prompts forever.
+ */
+export const AGENT_TURN_MAX_SILENCE_MS = 15 * 60_000;
+
 export class SessionCell {
   readonly machine: SessionMachine;
   readonly transcript: AcpTranscriptParser;
@@ -83,6 +90,7 @@ export class SessionCell {
   private _acpSessionId: string;
   private configCatalogState: SessionConfigCatalog['kind'] = 'pending';
   private quiesceTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastAgentTurnEventAt = 0;
   private lastRunningAgentCount = 0;
   private readonly effectDriver: MachineEffectDriver<Effect>;
 
@@ -219,6 +227,10 @@ export class SessionCell {
     modes?: SessionModeState | null;
     configOptions?: readonly SessionConfigOption[] | null;
   }): void {
+    // Background agents restored from history ran in a process that is gone;
+    // counting them as running would hold every new prompt in the queue.
+    // Settle them while still replaying so it does not read as agent activity.
+    this.settleRunningAgents('all', 'completed');
     this.applyEvent({ type: 'SessionLoaded' });
     this.seedTranscriptMeta(meta, 'complete');
   }
@@ -255,6 +267,7 @@ export class SessionCell {
     if (event.kind === 'goal') this.deps.callbacks?.onSessionStateChanged?.();
     if (event.kind === 'config') this.configCatalogState = 'ready';
     this.dispatchAgentsChangedIfNeeded(previousRunningAgentCount);
+    if (this.machine.agentTurnActive) this.lastAgentTurnEventAt = Date.now();
     if (idleTranscriptEvent) this.scheduleQuiesce();
     this.emitTranscriptChanged();
   }
@@ -714,6 +727,7 @@ export class SessionCell {
 
   private hasWorkInFlight(): boolean {
     if (this.machine.pendingPermissions.length > 0) return true;
+    if (Date.now() - this.lastAgentTurnEventAt >= AGENT_TURN_MAX_SILENCE_MS) return false;
     return (this.transcript.activeTurn?.items ?? []).some(
       (item) => 'status' in item && item.status === 'running'
     );

@@ -129,6 +129,12 @@ export class SessionMaterializer {
             ),
             signal
           );
+          // The SDK settles the load response immediately but dispatches the
+          // history notifications sent before it through several awaits. On a
+          // long history some are still in flight here; applying them after
+          // SessionLoaded would read as the agent starting a turn on its own
+          // and park the user's prompt behind it.
+          await drainPendingNotifications();
           if (!this.callbacks.isCurrent(entry, epoch) || record.disposed) {
             return acpErr.conversationNotFound(entry.conversationId);
           }
@@ -483,4 +489,9 @@ function providerErrorDetails(error: unknown): { code?: number; providerMessage?
     ...(code !== undefined && { code }),
     ...(message !== undefined && { providerMessage: redactSecrets(message).slice(0, 2_000) }),
   };
+}
+
+/** Resolves once every already-queued microtask, including in-flight notifications, has run. */
+function drainPendingNotifications(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
