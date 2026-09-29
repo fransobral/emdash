@@ -3,7 +3,12 @@ import { isOk } from '@emdash/shared';
 import { noopLogger } from '@emdash/shared/logger';
 import { describe, expect, it, vi } from 'vitest';
 import { FakeAcpAgent } from '#runtimes/acp/node/acp-test-support';
-import { SessionCell, AGENT_TURN_QUIESCE_MS, USER_WAITING_QUIESCE_MS } from './cell';
+import {
+  SessionCell,
+  AGENT_TURN_MAX_SILENCE_MS,
+  AGENT_TURN_QUIESCE_MS,
+  USER_WAITING_QUIESCE_MS,
+} from './cell';
 
 function makePendingCell(agent = new FakeAcpAgent()) {
   const cell = new SessionCell({
@@ -113,6 +118,32 @@ describe('SessionCell prompts', () => {
       sessionId: 'session-1',
       prompt: [{ type: 'text', text: 'queued' }],
     });
+  });
+});
+
+describe('SessionCell history replay', () => {
+  it('does not keep background agents restored from history running after the load', async () => {
+    const { cell, agent } = makePendingCell(new FakeAcpAgent());
+    agent.prompt = vi.fn().mockResolvedValue({ stopReason: 'end_turn' });
+
+    cell.beginReplay();
+    cell.push({
+      kind: 'subagent',
+      toolCallId: 'tool-1',
+      agentId: 'agent-1',
+      title: 'Background agent from an earlier process',
+      status: 'in_progress',
+      parentToolCallId: null,
+      background: true,
+    });
+    cell.applySessionLoaded();
+    cell.endReplay();
+
+    expect(cell.sessionState.backgroundAgentCount).toBe(0);
+    expect(cell.sessionState.isGenerating).toBe(false);
+    const sent = await cell.prompt({ text: 'next question' });
+    expect(sent.success && sent.data).not.toEqual({ queued: true });
+    expect(agent.prompt).toHaveBeenCalled();
   });
 });
 
@@ -496,6 +527,33 @@ describe('SessionCell idle turns and queue commands', () => {
         kind: 'done',
         reason: 'quiesced',
       });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('settles an agent-initiated turn whose running tool went silent too long', async () => {
+    vi.useFakeTimers();
+    try {
+      const { cell } = makeCell();
+      cell.push({
+        kind: 'tool_call',
+        toolCallId: 'orphaned',
+        title: 'Run tests',
+        toolKind: 'execute',
+        status: 'in_progress',
+        parentToolCallId: null,
+        diffs: [],
+        locations: [],
+      });
+
+      vi.advanceTimersByTime(AGENT_TURN_MAX_SILENCE_MS - AGENT_TURN_QUIESCE_MS);
+      await Promise.resolve();
+      expect(cell.sessionState.agentTurnActive).toBe(true);
+
+      vi.advanceTimersByTime(AGENT_TURN_QUIESCE_MS * 2);
+      await Promise.resolve();
+      expect(cell.sessionState.agentTurnActive).toBe(false);
     } finally {
       vi.useRealTimers();
     }

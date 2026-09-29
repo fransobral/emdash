@@ -4,7 +4,9 @@ import type { CLIAgentPluginProvider } from '#services/agent-plugins/api/plugins
 import {
   ACP_CONNECTION_IDLE_TTL_MS,
   ACP_SESSION_IDLE_MS,
-  acpWorkerSpec, type AcpWorkerSpecInput } from './worker-spec';
+  acpWorkerSpec,
+  type AcpWorkerSpecInput,
+} from './worker-spec';
 
 describe('acpWorkerSpec', () => {
   it('bakes the session idle window and connection TTL into the config', () => {
