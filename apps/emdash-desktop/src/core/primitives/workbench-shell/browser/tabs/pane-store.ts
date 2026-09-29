@@ -135,6 +135,7 @@ export class PaneStore<R extends TabRegistry = TabRegistry>
       open: action,
       openKind: action,
       closeTab: action,
+      adoptDescriptor: action,
       closeActiveTab: action,
       setActiveTab: action,
       reorderTabs: action,
@@ -378,6 +379,25 @@ export class PaneStore<R extends TabRegistry = TabRegistry>
 
   closeTab(id: string): void {
     this._removeTab(id);
+  }
+
+  /**
+   * Adds a tab another device opened, keeping its tab id so both devices
+   * agree on identity. Does not steal focus unless the pane was empty.
+   */
+  adoptDescriptor(desc: TabDescriptor): void {
+    const { kind, tabId, isPreview, state } = stateFromDescriptor(desc);
+    if (this.entries.has(tabId) || !this.registry.has(kind)) return;
+    this._attachEntryAndInitialize(new TabEntryImpl(kind, tabId, isPreview, state), {
+      activate: this.tabOrder.length === 0,
+    });
+  }
+
+  /** True if this pane already shows the resource a descriptor points at. */
+  hasDescriptorResource(desc: TabDescriptor): boolean {
+    const { kind, state } = stateFromDescriptor(desc);
+    if (!this.registry.has(kind)) return false;
+    return this.hasOpenKey(kind, this.registry.get(kind).resourceKey(state as never));
   }
 
   closeActiveTab(): void {
