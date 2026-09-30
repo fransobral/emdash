@@ -56,6 +56,7 @@
       "@anthropic-ai/claude-agent-sdk-linux-x64-musl",
       "@anthropic-ai/claude-agent-sdk-win32-arm64",
       "@anthropic-ai/claude-agent-sdk-win32-x64",
+      "@napi-rs/canvas",
       "@openai/codex-darwin-arm64",
       "@openai/codex-darwin-x64",
       "@openai/codex-linux-arm64",

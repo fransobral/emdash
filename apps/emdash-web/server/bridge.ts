@@ -11,6 +11,7 @@ import type { CreateTaskSuccess, TaskListData } from '@core/primitives/tasks/api
 import { encodeTopic, type Controller, type LiveSource } from '@emdash/wire/rpc';
 import { handleFsEditRoute } from './fs-edit';
 import { createDownloadTickets, FsHttpError, handleFsRoute, streamFile } from './fs-explorer';
+import { createViewTickets, handleFsViewRoute, streamInline } from './fs-view';
 
 type BridgeOptions = {
   token: string;
@@ -39,14 +40,20 @@ type BridgeTaskInput = {
 
 export function createBridgeHandler(options: BridgeOptions) {
   const downloadTickets = createDownloadTickets(randomBytes(32).toString('hex'));
+  const viewTickets = createViewTickets(randomBytes(32).toString('hex'));
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (!url.pathname.startsWith('/api/bridge/')) return false;
 
-    // Browser downloads can't send the bearer header; a signed single-use ticket authorizes them.
-    if (req.method === 'GET' && url.pathname === '/api/bridge/fs/download') {
+    // Browser downloads and media previews can't send the bearer header; a signed ticket
+    // authorizes them (single-use for downloads, reusable until expiry for previews).
+    const isDownload = url.pathname === '/api/bridge/fs/download';
+    const isView = url.pathname === '/api/bridge/fs/view';
+    if ((req.method === 'GET' || (isView && req.method === 'HEAD')) && (isDownload || isView)) {
       try {
-        await streamFile(downloadTickets.redeem(url.searchParams.get('ticket')), res);
+        const ticket = url.searchParams.get('ticket');
+        if (isView) await streamInline(viewTickets.redeem(ticket), req, res);
+        else await streamFile(downloadTickets.redeem(ticket), res);
       } catch (error) {
         if (res.headersSent) res.destroy();
         else {
@@ -82,7 +89,13 @@ export function createBridgeHandler(options: BridgeOptions) {
           readJson: () => readJson(req),
           tickets: downloadTickets,
         };
-        if ((await handleFsRoute(fsContext)) || (await handleFsEditRoute(fsContext))) return true;
+        if (
+          (await handleFsRoute(fsContext)) ||
+          (await handleFsEditRoute(fsContext)) ||
+          (await handleFsViewRoute(fsContext, viewTickets))
+        ) {
+          return true;
+        }
       }
       if (req.method === 'GET' && url.pathname === '/api/bridge/state') {
         json(res, 200, await readState(options.controllers));

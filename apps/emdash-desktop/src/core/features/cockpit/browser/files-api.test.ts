@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, pathCrumbs, uploadInChunks } from './files-api';
+import { formatBytes, pathCrumbs, previewKindForName, uploadInChunks } from './files-api';
 
 /** A fake server that stores uploaded bytes and can drop chosen requests. */
 function fakeServer(options: { failPutNumbers?: number[] } = {}) {
@@ -86,5 +86,16 @@ describe('explorer formatting', () => {
   it('formats sizes up to terabytes', () => {
     expect(formatBytes(512)).toBe('512 B');
     expect(formatBytes(3.5 * 1024 ** 3)).toBe('3.5 GB');
+  });
+});
+
+describe('file previews', () => {
+  it('opens photos, PDFs and videos in the viewer and everything else as text', () => {
+    expect(previewKindForName('IMG_2041.JPG')).toBe('image');
+    expect(previewKindForName('roadmap-aurora-12-meses.pdf')).toBe('pdf');
+    expect(previewKindForName('demo.mov')).toBe('video');
+    expect(previewKindForName('logo.svg')).toBeNull();
+    expect(previewKindForName('notes.md')).toBeNull();
+    expect(previewKindForName('.pdf')).toBeNull();
   });
 });

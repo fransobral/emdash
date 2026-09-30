@@ -6,5 +6,7 @@ export type ManagedFileKind =
   | 'html'
   | 'svg'
   | 'image'
+  | 'pdf'
+  | 'video'
   | 'too-large'
   | 'binary';

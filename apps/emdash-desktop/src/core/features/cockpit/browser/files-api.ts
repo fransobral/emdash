@@ -15,6 +15,30 @@ export type TextFile = { path: string; content: string; modifiedAt: number };
 
 export type FsApi = ReturnType<typeof createFsApi>;
 
+export type PreviewKind = 'image' | 'pdf' | 'video';
+
+const PREVIEW_KINDS: Record<string, PreviewKind> = {
+  avif: 'image',
+  bmp: 'image',
+  gif: 'image',
+  jpeg: 'image',
+  jpg: 'image',
+  png: 'image',
+  webp: 'image',
+  pdf: 'pdf',
+  m4v: 'video',
+  mov: 'video',
+  mp4: 'video',
+  webm: 'video',
+};
+
+/** Mirrors the server's previewable types (fs-view.ts); SVG and HTML open as text. */
+export function previewKindForName(name: string): PreviewKind | null {
+  const dot = name.lastIndexOf('.');
+  if (dot <= 0) return null;
+  return PREVIEW_KINDS[name.slice(dot + 1).toLowerCase()] ?? null;
+}
+
 /** Keeps each request far below the Cloudflare tunnel's 100 MB body limit and its timeouts. */
 export const UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024;
 const MAX_CONSECUTIVE_FAILURES = 6;
@@ -58,6 +82,8 @@ export function createFsApi(token: string, fetchImpl: Fetch = (...args) => fetch
     mkdir: (parent: string, name: string) => postJson<{ path: string }>('mkdir', { parent, name }),
     downloadUrl: async (path: string) =>
       (await postJson<{ url: string }>('download-link', { path })).url,
+    /** Reusable inline link for images, PDFs, and videos (supports range requests). */
+    viewUrl: async (path: string) => (await postJson<{ url: string }>('view-link', { path })).url,
     rename: (path: string, newName: string) =>
       postJson<{ path: string }>('rename', { path, newName }),
     remove: (path: string) => postJson<{ deleted: true }>('delete', { path }),

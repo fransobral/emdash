@@ -13,10 +13,19 @@
 
 import { Spinner } from '@emdash/ui/react/primitives';
 import { observer } from 'mobx-react-lite';
-import { useEffect, useState, type ComponentType } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import type { FileTabResource } from '@core/features/editor/api/browser/task-editor/stores/file-tab-resource';
 import { HtmlRenderer } from '@core/features/editor/contributions/browser/renderers/html-renderer';
-import { readImageFile } from '@core/features/files/api/browser/file-content';
+import {
+  PdfViewer,
+  PreviewMessage,
+  VideoViewer,
+} from '@core/features/editor/contributions/browser/renderers/media-viewers';
+import {
+  MEDIA_PREVIEW_MAX_BYTES,
+  readImageFile,
+  readMediaFile,
+} from '@core/features/files/api/browser/file-content';
 import { BinaryRenderer } from '../renderers/binary-renderer';
 import { CsvRenderer } from '../renderers/csv-renderer';
 import { ImageRenderer } from '../renderers/image-renderer';
@@ -100,6 +109,96 @@ const ImagePreview = observer(function ImagePreview({ tab }: { tab: FileTabResou
   return <ImageRenderer file={{ path: tab.path, content: state.dataUrl }} />;
 });
 
+type MediaBytesState =
+  | { kind: 'loading' }
+  | { kind: 'error' }
+  | { kind: 'too-large'; size: number }
+  | { kind: 'ready'; bytes: Uint8Array<ArrayBuffer> };
+
+/** Reads the whole file (up to MEDIA_PREVIEW_MAX_BYTES) for PDF and video previews. */
+function useMediaBytes(tab: FileTabResource): MediaBytesState {
+  const [state, setState] = useState<MediaBytesState>({ kind: 'loading' });
+  const ref = tab.ref;
+  useEffect(() => {
+    if (!ref) {
+      setState({ kind: 'error' });
+      return;
+    }
+    let cancelled = false;
+    setState({ kind: 'loading' });
+    readMediaFile(ref)
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.success) setState({ kind: 'error' });
+        else if (result.data.truncated) setState({ kind: 'too-large', size: result.data.size });
+        else setState({ kind: 'ready', bytes: result.data.bytes });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ kind: 'error' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ref]);
+  return state;
+}
+
+function MediaBytesStatus({ state }: { state: Exclude<MediaBytesState, { kind: 'ready' }> }) {
+  if (state.kind === 'loading') {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner size="sm" />
+      </div>
+    );
+  }
+  if (state.kind === 'too-large') {
+    const limitMb = MEDIA_PREVIEW_MAX_BYTES / (1024 * 1024);
+    const sizeMb = Math.round(state.size / (1024 * 1024));
+    return (
+      <PreviewMessage>
+        El archivo pesa {sizeMb} MB y la vista previa acepta hasta {limitMb} MB. Abrilo desde
+        Archivos para verlo.
+      </PreviewMessage>
+    );
+  }
+  return <PreviewMessage>No se pudo leer el archivo.</PreviewMessage>;
+}
+
+const PdfPreview = observer(function PdfPreview({ tab }: { tab: FileTabResource }) {
+  const state = useMediaBytes(tab);
+  const bytes = state.kind === 'ready' ? state.bytes : null;
+  const source = useMemo(() => (bytes ? { data: bytes } : null), [bytes]);
+  if (state.kind !== 'ready') return <MediaBytesStatus state={state} />;
+  if (!source) return <MediaBytesStatus state={{ kind: 'loading' }} />;
+  return <PdfViewer source={source} />;
+});
+
+const VIDEO_MIME: Record<string, string> = {
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+};
+
+const VideoPreview = observer(function VideoPreview({ tab }: { tab: FileTabResource }) {
+  const state = useMediaBytes(tab);
+  const bytes = state.kind === 'ready' ? state.bytes : null;
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!bytes) return;
+    const ext = tab.path.split('.').pop()?.toLowerCase() ?? '';
+    const objectUrl = URL.createObjectURL(
+      new Blob([bytes], { type: VIDEO_MIME[ext] ?? 'video/mp4' })
+    );
+    setUrl(objectUrl);
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+      setUrl(null);
+    };
+  }, [bytes, tab.path]);
+  if (state.kind !== 'ready') return <MediaBytesStatus state={state} />;
+  if (!url) return <MediaBytesStatus state={{ kind: 'loading' }} />;
+  return <VideoViewer src={url} name={tab.path.split('/').pop() ?? tab.path} />;
+});
+
 function BinaryPreview({ tab }: { tab: FileTabResource }) {
   return <BinaryRenderer file={tab} />;
 }
@@ -114,5 +213,7 @@ export const FILE_CONTENT_TYPES: Record<
   html: { editable: true, Preview: HtmlPreview },
   svg: { editable: true, Preview: SvgPreview },
   image: { editable: false, Preview: ImagePreview },
+  pdf: { editable: false, Preview: PdfPreview },
+  video: { editable: false, Preview: VideoPreview },
   binary: { editable: false, Preview: BinaryPreview },
 };
