@@ -11,6 +11,10 @@ export type FsEntry = {
 
 export type FsListing = { path: string; parent: string | null; entries: FsEntry[] };
 
+export type TextFile = { path: string; content: string; modifiedAt: number };
+
+export type FsApi = ReturnType<typeof createFsApi>;
+
 /** Keeps each request far below the Cloudflare tunnel's 100 MB body limit and its timeouts. */
 export const UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024;
 const MAX_CONSECUTIVE_FAILURES = 6;
@@ -54,6 +58,19 @@ export function createFsApi(token: string, fetchImpl: Fetch = (...args) => fetch
     mkdir: (parent: string, name: string) => postJson<{ path: string }>('mkdir', { parent, name }),
     downloadUrl: async (path: string) =>
       (await postJson<{ url: string }>('download-link', { path })).url,
+    rename: (path: string, newName: string) =>
+      postJson<{ path: string }>('rename', { path, newName }),
+    remove: (path: string) => postJson<{ deleted: true }>('delete', { path }),
+    read: (path: string) => request<TextFile>(`read?${new URLSearchParams({ path })}`),
+    write: (path: string, content: string, expectedModifiedAt: number | null) => {
+      const query = new URLSearchParams({ path });
+      if (expectedModifiedAt !== null) query.set('expectedModifiedAt', String(expectedModifiedAt));
+      return request<{ path: string; modifiedAt: number }>(`write?${query}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+        body: content,
+      });
+    },
     upload: (options: Omit<ChunkedUploadOptions, 'token' | 'fetchImpl'>) =>
       uploadInChunks({ ...options, token, fetchImpl }),
   };

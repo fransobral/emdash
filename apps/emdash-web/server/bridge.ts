@@ -9,6 +9,7 @@ import type { Conversation } from '@core/primitives/conversations/api';
 import type { Project } from '@core/primitives/projects/api';
 import type { CreateTaskSuccess, TaskListData } from '@core/primitives/tasks/api';
 import { encodeTopic, type Controller, type LiveSource } from '@emdash/wire/rpc';
+import { handleFsEditRoute } from './fs-edit';
 import { createDownloadTickets, FsHttpError, handleFsRoute, streamFile } from './fs-explorer';
 
 type BridgeOptions = {
@@ -73,17 +74,15 @@ export function createBridgeHandler(options: BridgeOptions) {
         json(res, 200, { ok: true });
         return true;
       }
-      if (
-        url.pathname.startsWith('/api/bridge/fs/') &&
-        (await handleFsRoute({
+      if (url.pathname.startsWith('/api/bridge/fs/')) {
+        const fsContext = {
           req,
           url,
-          json: (status, body) => json(res, status, body),
+          json: (status: number, body: unknown) => json(res, status, body),
           readJson: () => readJson(req),
           tickets: downloadTickets,
-        }))
-      ) {
-        return true;
+        };
+        if ((await handleFsRoute(fsContext)) || (await handleFsEditRoute(fsContext))) return true;
       }
       if (req.method === 'GET' && url.pathname === '/api/bridge/state') {
         json(res, 200, await readState(options.controllers));

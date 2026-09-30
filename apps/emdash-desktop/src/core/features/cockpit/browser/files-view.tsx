@@ -1,5 +1,5 @@
 import { Button, Field, Input } from '@emdash/ui/react/primitives';
-import { ArrowUp, Download, File, Folder, FolderPlus, RefreshCw, Upload, X } from 'lucide-react';
+import { ArrowUp, FolderPlus, RefreshCw, Upload, X } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cockpitFilesViewDef } from '@core/features/cockpit/contributions/views';
@@ -7,6 +7,7 @@ import { getProjectManagerStore } from '@core/features/projects/api/browser/stor
 import { Titlebar } from '@core/features/workbench/contributions/browser/Titlebar';
 import { cn } from '@core/primitives/styling/browser/cn';
 import { defineViewRuntime } from '@core/primitives/views/react';
+import { FileTextEditor } from './file-text-editor';
 import {
   createFsApi,
   formatBytes,
@@ -15,6 +16,7 @@ import {
   type FsEntry,
   type FsListing,
 } from './files-api';
+import { EntryRow } from './files-entry-row';
 
 const BRIDGE_TOKEN_KEY = 'emdash-web-bridge-token';
 const SESSION_TOKEN_KEY = 'emdash-web-token';
@@ -68,6 +70,7 @@ export const FilesMainPanel = observer(function FilesMainPanel() {
   const [showHidden, setShowHidden] = useState(false);
   const [newFolder, setNewFolder] = useState<string | null>(null);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const [editing, setEditing] = useState<FsEntry | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(
@@ -157,6 +160,29 @@ export const FilesMainPanel = observer(function FilesMainPanel() {
   async function download(entry: FsEntry): Promise<void> {
     try {
       window.location.href = await api.downloadUrl(entry.path);
+    } catch (caught) {
+      setError(errorText(caught));
+    }
+  }
+
+  async function renameEntry(entry: FsEntry, newName: string): Promise<boolean> {
+    try {
+      await api.rename(entry.path, newName);
+      await load(path);
+      return true;
+    } catch (caught) {
+      setError(errorText(caught));
+      return false;
+    }
+  }
+
+  async function deleteEntry(entry: FsEntry): Promise<void> {
+    const what =
+      entry.kind === 'directory' ? `la carpeta ${entry.name} y todo su contenido` : entry.name;
+    if (!window.confirm(`¿Eliminar ${what}? No se puede deshacer.`)) return;
+    try {
+      await api.remove(entry.path);
+      await load(path);
     } catch (caught) {
       setError(errorText(caught));
     }
@@ -291,87 +317,51 @@ export const FilesMainPanel = observer(function FilesMainPanel() {
         )}
         {error && <p className="text-destructive text-sm">{error}</p>}
         {uploads.length > 0 && <UploadList uploads={uploads} onClear={() => setUploads([])} />}
-        <section className="overflow-hidden rounded-lg border border-border bg-background-1">
-          {listing?.parent && (
-            <button
-              type="button"
-              className="flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left text-sm hover:bg-background-2"
-              onClick={() => void load(listing.parent!)}
-            >
-              <ArrowUp className="size-4 text-foreground-muted" /> ..
-            </button>
-          )}
-          {entries.length === 0 ? (
-            <p className="px-4 py-5 text-sm text-foreground-muted">
-              {loading ? 'Cargando…' : 'Carpeta vacía. Arrastrá archivos acá para subirlos.'}
-            </p>
-          ) : (
-            <div className="divide-y divide-border">
-              {entries.map((entry) => (
-                <EntryRow
-                  key={entry.path}
-                  entry={entry}
-                  onOpen={() => void load(entry.path)}
-                  onDownload={() => void download(entry)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+        {editing ? (
+          <FileTextEditor
+            api={api}
+            entry={editing}
+            onClose={() => {
+              setEditing(null);
+              void load(path);
+            }}
+          />
+        ) : (
+          <section className="overflow-hidden rounded-lg border border-border bg-background-1">
+            {listing?.parent && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left text-sm hover:bg-background-2"
+                onClick={() => void load(listing.parent!)}
+              >
+                <ArrowUp className="size-4 text-foreground-muted" /> ..
+              </button>
+            )}
+            {entries.length === 0 ? (
+              <p className="px-4 py-5 text-sm text-foreground-muted">
+                {loading ? 'Cargando…' : 'Carpeta vacía. Arrastrá archivos acá para subirlos.'}
+              </p>
+            ) : (
+              <div className="divide-y divide-border">
+                {entries.map((entry) => (
+                  <EntryRow
+                    key={entry.path}
+                    entry={entry}
+                    onOpen={() => void load(entry.path)}
+                    onEdit={() => setEditing(entry)}
+                    onDownload={() => void download(entry)}
+                    onRename={(newName) => renameEntry(entry, newName)}
+                    onDelete={() => void deleteEntry(entry)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </main>
   );
 });
-
-function EntryRow({
-  entry,
-  onOpen,
-  onDownload,
-}: {
-  entry: FsEntry;
-  onOpen: () => void;
-  onDownload: () => void;
-}) {
-  const isDirectory = entry.kind === 'directory';
-  const Icon = isDirectory ? Folder : File;
-  return (
-    <div className="flex items-center gap-3 px-4 py-2.5 text-sm">
-      <Icon
-        className={cn('size-4 shrink-0', isDirectory ? 'text-foreground' : 'text-foreground-muted')}
-      />
-      {isDirectory ? (
-        <button
-          type="button"
-          className="min-w-0 flex-1 truncate text-left hover:underline"
-          onClick={onOpen}
-        >
-          {entry.name}
-          {entry.symlink && <span className="text-foreground-passive"> ↗</span>}
-        </button>
-      ) : (
-        <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-      )}
-      <span className="hidden shrink-0 text-xs text-foreground-passive sm:inline">
-        {entry.modifiedAt ? new Date(entry.modifiedAt).toLocaleString() : ''}
-      </span>
-      {entry.kind === 'file' && (
-        <>
-          <span className="shrink-0 text-xs text-foreground-muted">
-            {formatBytes(entry.sizeBytes)}
-          </span>
-          <button
-            type="button"
-            aria-label={`Descargar ${entry.name}`}
-            className="shrink-0 rounded p-1 text-foreground-muted hover:bg-background-2 hover:text-foreground"
-            onClick={onDownload}
-          >
-            <Download className="size-4" />
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
 
 function UploadList({ uploads, onClear }: { uploads: UploadItem[]; onClear: () => void }) {
   const active = uploads.some((item) => item.status === 'uploading');
