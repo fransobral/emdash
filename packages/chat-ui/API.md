@@ -253,6 +253,7 @@ Callbacks injected by the host to respond to user actions:
 | `onViewImage` | `({ attachment, itemId, source }) => void` | User clicked an image thumbnail in a user message. |
 | `onStop` | `({ itemId }) => void` | User clicked the stop button during generation. |
 | `classifyLink` | `(href) => { kind: 'workspace-file'; path: string } \| { kind: 'external' }` | Classify a markdown `href` at render time (must be synchronous). |
+| `resolveLinkHref` | `(href) => string` | Map an external markdown `href` to the URL the link opens (must be synchronous). |
 | `onViewMermaid` | `({ chart, blockId, source }) => void` | User clicked a Mermaid diagram preview. |
 
 ---

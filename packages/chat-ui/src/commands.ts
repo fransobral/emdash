@@ -76,6 +76,13 @@ export type ChatCommands = {
   classifyLink?: (href: string) => { kind: 'workspace-file'; path: string } | { kind: 'external' };
 
   /**
+   * Synchronously map an external markdown `href` to the URL the rendered
+   * link should open, e.g. to route `http://localhost:PORT` through a proxy.
+   * `classifyLink` still receives the original `href`.
+   */
+  resolveLinkHref?: (href: string) => string;
+
+  /**
    * Called when the user clicks a Mermaid diagram block preview.
    */
   onViewMermaid?: (arg: { chart: string; blockId: string; source: 'mermaid-block' }) => void;

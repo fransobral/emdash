@@ -125,7 +125,7 @@ function ProseFragment(props: {
       <a
         class={cls}
         style={{ left: `${props.frag.x}px` }}
-        href={href}
+        href={commands().resolveLinkHref?.(href) ?? href}
         target="_blank"
         rel="noopener noreferrer"
         onClick={handleClick}
