@@ -12,6 +12,10 @@
  *   EMDASH_WEB_TOKEN     access token; auto-generated and printed when unset
  *   EMDASH_WEB_DATA_DIR  user-data directory (default ~/.emdash-web)
  *   EMDASH_WEB_APP_DIR   app root hosting out/main worker bundles
+ *   EMDASH_WEB_PREVIEW_ORIGIN      public origin of the local preview proxy
+ *                                  (e.g. https://preview.example.com); unset disables it
+ *   EMDASH_WEB_PREVIEW_PORT        preview proxy listen port (default 4201)
+ *   EMDASH_WEB_PREVIEW_DENY_PORTS  extra comma-separated ports the preview must not reach
  */
 import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -36,6 +40,12 @@ import { tuiAgentStatusBridge } from '@main/core/agent-status/tui-agent-status-b
 import { startUserEnvCapture } from '@main/lib/userEnv';
 import { createBridgeHandler } from './bridge';
 import { createPasswordAuth } from './password-auth';
+import {
+  createPortPolicy,
+  createPreviewOpenHandler,
+  createPreviewProxy,
+  INFRA_PORTS,
+} from './preview-proxy';
 import { createStaticHandler } from './static';
 import { attachWireGateway } from './ws-gateway';
 
@@ -46,6 +56,12 @@ const HOST = process.env.EMDASH_WEB_HOST ?? '127.0.0.1';
 const TOKEN = process.env.EMDASH_WEB_TOKEN ?? randomBytes(24).toString('base64url');
 const BRIDGE_TOKEN = process.env.EMDASH_WEB_BRIDGE_TOKEN ?? '';
 const PASSWORD = process.env.EMDASH_WEB_PASSWORD ?? '';
+const PREVIEW_ORIGIN = process.env.EMDASH_WEB_PREVIEW_ORIGIN ?? '';
+const PREVIEW_PORT = Number(process.env.EMDASH_WEB_PREVIEW_PORT ?? 4201);
+const PREVIEW_DENY_PORTS = (process.env.EMDASH_WEB_PREVIEW_DENY_PORTS ?? '')
+  .split(',')
+  .map((value) => Number(value.trim()))
+  .filter((value) => Number.isInteger(value) && value > 0);
 const DATA_DIR = resolve(process.env.EMDASH_WEB_DATA_DIR ?? join(homedir(), '.emdash-web'));
 
 async function main(): Promise<void> {
@@ -135,6 +151,17 @@ async function main(): Promise<void> {
     sessionToken: TOKEN,
     controllers: controllers.controllers,
   });
+  const isPreviewPortAllowed = createPortPolicy([
+    PORT,
+    PREVIEW_PORT,
+    ...INFRA_PORTS,
+    ...PREVIEW_DENY_PORTS,
+  ]);
+  const previewOpen = createPreviewOpenHandler({
+    origin: PREVIEW_ORIGIN,
+    secret: TOKEN,
+    isAllowed: isPreviewPortAllowed,
+  });
   const server = createServer((req, res) => {
     if (req.url?.startsWith('/api/bridge/')) {
       void bridgeHandler(req, res);
@@ -145,6 +172,14 @@ async function main(): Promise<void> {
       return;
     }
     if (passwordAuth.requireAuthentication(req, res)) return;
+    if (req.url?.startsWith('/preview/')) {
+      void previewOpen(req, res).then((handled) => {
+        if (handled) return;
+        res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+        res.end('Not found');
+      });
+      return;
+    }
     if (staticHandler(req, res)) return;
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     res.end('Not found');
@@ -169,6 +204,19 @@ async function main(): Promise<void> {
     console.log('  terminal access on this machine.');
   });
 
+  // Serves agent dev servers at the root of their own origin; see preview-proxy.ts.
+  const previewProxy = createPreviewProxy({ secret: TOKEN, isAllowed: isPreviewPortAllowed });
+  const previewServer = createServer(previewProxy.handleRequest);
+  previewServer.on('upgrade', previewProxy.handleUpgrade);
+  previewServer.on('error', (error) => {
+    console.warn('[emdash-web] preview proxy failed to start:', error);
+  });
+  previewServer.listen(PREVIEW_PORT, HOST, () => {
+    console.log(
+      `  Preview proxy on ${HOST}:${PREVIEW_PORT} (${PREVIEW_ORIGIN || 'origin not set'})`
+    );
+  });
+
   let shuttingDown = false;
   const shutdown = async (): Promise<void> => {
     if (shuttingDown) return;
@@ -176,6 +224,8 @@ async function main(): Promise<void> {
     console.log('[emdash-web] shutting down…');
     server.close();
     server.closeAllConnections?.();
+    previewServer.close();
+    previewServer.closeAllConnections?.();
     try {
       await runtimes.dispose();
     } catch {

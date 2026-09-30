@@ -59,11 +59,14 @@ import {
   uploadDroppedFile,
 } from './acp-dropped-file';
 import { buildIssueMentionHiddenContext } from './issue-mention-context';
+import { localPreviewHref } from './local-preview-link';
 import { createTranscriptFileCommands } from './transcript-file-commands';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const attachmentDataUrlCache = new Map<string, string>();
+// emdash-web serves the renderer from a browser; localhost links there mean the server's machine.
+const IS_WEB_BROWSER = !navigator.userAgent.includes('Electron');
 const ISSUE_SEARCH_MIN_LENGTH = 2;
 const ISSUE_SEARCH_LIMIT = 20;
 const SLASH_COMMANDS_SECTION = 'Commands';
@@ -795,6 +798,7 @@ export const AcpChatPanel = observer(function AcpChatPanel() {
         });
       },
       classifyLink: fileCommands?.classifyLink,
+      resolveLinkHref: IS_WEB_BROWSER ? localPreviewHref : undefined,
       onOpenFile: fileCommands?.onOpenFile,
       onClickMention: (arg: Parameters<NonNullable<ChatCommands['onClickMention']>>[0]) => {
         if (!store) return;
