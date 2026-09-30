@@ -1,7 +1,17 @@
 import { Button, Field, Input } from '@emdash/ui/react/primitives';
 import { ArrowUp, FolderPlus, RefreshCw, Upload, X } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  Fragment,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { cockpitFilesViewDef } from '@core/features/cockpit/contributions/views';
 import { getProjectManagerStore } from '@core/features/projects/api/browser/stores/project-selectors';
 import { Titlebar } from '@core/features/workbench/contributions/browser/Titlebar';
@@ -49,6 +59,13 @@ function writeStorage(key: string, value: string): void {
   }
 }
 
+/** Folder requested through the view params, e.g. "Abrir en Archivos" from a project tree. */
+const RequestedPathContext = createContext<string | undefined>(undefined);
+
+function FilesViewWrapper({ children, path }: { children: ReactNode; path?: string }) {
+  return <RequestedPathContext.Provider value={path}>{children}</RequestedPathContext.Provider>;
+}
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -62,7 +79,8 @@ export const FilesMainPanel = observer(function FilesMainPanel() {
     () => readStorage(BRIDGE_TOKEN_KEY) ?? readStorage(SESSION_TOKEN_KEY) ?? ''
   );
   const api = useMemo(() => createFsApi(token), [token]);
-  const [path, setPath] = useState(() => readStorage(LAST_PATH_KEY) ?? HOME);
+  const requestedPath = useContext(RequestedPathContext);
+  const [path, setPath] = useState(() => requestedPath ?? readStorage(LAST_PATH_KEY) ?? HOME);
   const [pathDraft, setPathDraft] = useState(path);
   const [listing, setListing] = useState<FsListing | null>(null);
   const [loading, setLoading] = useState(false);
@@ -95,8 +113,8 @@ export const FilesMainPanel = observer(function FilesMainPanel() {
 
   const initialPath = useRef(path);
   useEffect(() => {
-    void load(initialPath.current);
-  }, [load]);
+    void load(requestedPath ?? initialPath.current);
+  }, [load, requestedPath]);
 
   const patchUpload = (id: string, patch: Partial<UploadItem>) =>
     setUploads((items) => items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
@@ -425,7 +443,7 @@ function UploadList({ uploads, onClear }: { uploads: UploadItem[]; onClear: () =
 
 export const cockpitFilesViewRuntime = defineViewRuntime(cockpitFilesViewDef, {
   slots: {
-    wrap: Fragment,
+    wrap: FilesViewWrapper,
     titlebar: () => <Titlebar leftSlot={<span className="px-2 text-sm">Archivos</span>} />,
     main: FilesMainPanel,
   },
