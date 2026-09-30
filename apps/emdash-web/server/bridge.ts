@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { lstat, mkdir, open, readdir, realpath, unlink } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -8,6 +9,7 @@ import type { Conversation } from '@core/primitives/conversations/api';
 import type { Project } from '@core/primitives/projects/api';
 import type { CreateTaskSuccess, TaskListData } from '@core/primitives/tasks/api';
 import { encodeTopic, type Controller, type LiveSource } from '@emdash/wire/rpc';
+import { createDownloadTickets, FsHttpError, handleFsRoute, streamFile } from './fs-explorer';
 
 type BridgeOptions = {
   token: string;
@@ -35,9 +37,24 @@ type BridgeTaskInput = {
 };
 
 export function createBridgeHandler(options: BridgeOptions) {
+  const downloadTickets = createDownloadTickets(randomBytes(32).toString('hex'));
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (!url.pathname.startsWith('/api/bridge/')) return false;
+
+    // Browser downloads can't send the bearer header; a signed single-use ticket authorizes them.
+    if (req.method === 'GET' && url.pathname === '/api/bridge/fs/download') {
+      try {
+        await streamFile(downloadTickets.redeem(url.searchParams.get('ticket')), res);
+      } catch (error) {
+        if (res.headersSent) res.destroy();
+        else {
+          const status = error instanceof FsHttpError ? error.status : 500;
+          json(res, status, { error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      return true;
+    }
 
     applyCors(req, res);
     if (req.method === 'OPTIONS') {
@@ -54,6 +71,18 @@ export function createBridgeHandler(options: BridgeOptions) {
     try {
       if (req.method === 'GET' && url.pathname === '/api/bridge/health') {
         json(res, 200, { ok: true });
+        return true;
+      }
+      if (
+        url.pathname.startsWith('/api/bridge/fs/') &&
+        (await handleFsRoute({
+          req,
+          url,
+          json: (status, body) => json(res, status, body),
+          readJson: () => readJson(req),
+          tickets: downloadTickets,
+        }))
+      ) {
         return true;
       }
       if (req.method === 'GET' && url.pathname === '/api/bridge/state') {
@@ -117,8 +146,7 @@ export function createBridgeHandler(options: BridgeOptions) {
           error?: { type?: string; message?: string };
         };
         if (!result.success || !result.data) {
-          const message =
-            result.error?.message ?? result.error?.type ?? 'project creation failed';
+          const message = result.error?.message ?? result.error?.type ?? 'project creation failed';
           const alreadyExists = message === 'A project already exists at this path';
           json(res, alreadyExists ? 409 : 422, { error: message });
           return true;
@@ -201,7 +229,8 @@ export function createBridgeHandler(options: BridgeOptions) {
       json(res, 404, { error: 'not found' });
       return true;
     } catch (error) {
-      const status = error instanceof HttpError ? error.status : 500;
+      const status =
+        error instanceof HttpError || error instanceof FsHttpError ? error.status : 500;
       const message = error instanceof Error ? error.message : String(error);
       json(res, status, { error: message });
       return true;
@@ -622,7 +651,7 @@ function applyCors(req: IncomingMessage, res: ServerResponse): void {
     res.setHeader('access-control-allow-origin', origin);
     res.setHeader('vary', 'Origin');
     res.setHeader('access-control-allow-headers', 'Authorization, Content-Type');
-    res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+    res.setHeader('access-control-allow-methods', 'GET, POST, PUT, DELETE, OPTIONS');
   }
 }
 
