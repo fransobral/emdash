@@ -30,6 +30,7 @@ export const plugin = definePlugin(
     },
     autoApprove: {
       kind: 'supported',
+      acpModeId: 'auto',
     },
     auth: {
       kind: 'supported',
