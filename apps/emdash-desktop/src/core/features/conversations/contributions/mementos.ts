@@ -65,3 +65,34 @@ export const providerPreferencesMemento = defineMemento({
     maxEntries: 1,
   },
 });
+
+const discoveredModelSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+});
+
+export const discoveredModelsSchema = defineVersionedSchema()
+  .initial(
+    '1',
+    z.object({
+      version: z.literal('1'),
+      entries: z.record(z.string(), z.array(discoveredModelSchema)),
+    })
+  )
+  .build();
+export type DiscoveredModel = z.infer<typeof discoveredModelSchema>;
+export type DiscoveredModelsState = typeof discoveredModelsSchema.Type;
+
+/** The model catalog each agent last reported over ACP, so new chats offer its current models. */
+export const discoveredModelsMemento = defineMemento({
+  id: 'conversations.discovered-models',
+  subject: appSubject,
+  schema: discoveredModelsSchema,
+  default: { version: '1' as const, entries: {} },
+  retention: {
+    tier: 'persisted',
+    maxAge: Number.MAX_SAFE_INTEGER,
+    maxEntries: 1,
+  },
+});

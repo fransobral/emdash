@@ -6,6 +6,7 @@ import { hostRefFromConnectionId } from '@core/features/agents/api/browser/clien
 import { useAgents } from '@core/features/agents/api/browser/use-agents';
 import { AgentSelector } from '@core/features/agents/contributions/browser/agent-selector';
 import { nextDefaultConversationTitle } from '@core/features/conversations/api/browser/conversation-title-utils';
+import { useNewChatModelOptions } from '@core/features/conversations/api/browser/discovered-models';
 import { conversationRegistry } from '@core/features/conversations/api/browser/stores/conversation-registry';
 import { useEffectiveProvider } from '@core/features/conversations/api/browser/use-effective-provider';
 import { providerPreferencesMemento } from '@core/features/conversations/contributions/mementos';
@@ -54,14 +55,12 @@ export const CreateConversationModal = observer(function CreateConversationModal
 
   const { data: agents } = useAgents(hostRefFromConnectionId(connectionId));
   const selectedAgent = agents?.find((a) => a.id === providerId);
-  const modelsCapability = selectedAgent?.capabilities.models;
-  const modelOptions =
-    modelsCapability?.kind === 'selectable' ? modelsCapability.modelOptions : null;
 
   const showAutoApproveToggle = agentSupportsAutoApprove(selectedAgent?.capabilities);
   const showAcpToggle = agentSupportsAcp(selectedAgent?.capabilities);
   const useAcp = showAcpToggle && useChatUiPreference;
   const transport = useAcp ? 'acp' : 'pty';
+  const modelOptions = useNewChatModelOptions(providerId, connectionId, transport);
   const host = formatHostRef(hostRefFromConnectionId(connectionId));
   const preferenceKey = providerId ? providerPreferenceKey(host, providerId, transport) : null;
   const savedPreference = providerId

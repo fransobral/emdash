@@ -20,7 +20,15 @@ import {
 } from '@emdash/ui/react/components';
 import { toast } from '@emdash/ui/react/primitives';
 import type { BlobSource } from '@emdash/wire/rpc';
-import { action, computed, makeObservable, observable, reaction, runInAction } from 'mobx';
+import {
+  action,
+  comparer,
+  computed,
+  makeObservable,
+  observable,
+  reaction,
+  runInAction,
+} from 'mobx';
 import { getAgentsClient, hostRefFromConnectionId } from '@core/features/agents/api/browser/client';
 import {
   registerConversationCommands,
@@ -32,6 +40,7 @@ import {
   getConversationsClient,
   type ConversationsClient,
 } from '@core/features/conversations/api/browser/client';
+import { rememberDiscoveredModels } from '@core/features/conversations/api/browser/discovered-models';
 import { conversationRegistry } from '@core/features/conversations/api/browser/stores/conversation-registry';
 import { updateProviderPreference } from '@core/features/conversations/browser/provider-preferences';
 import {
@@ -123,6 +132,7 @@ export class AcpChatStore {
   private readonly _draftHandle: MementoHandle<AcpDraftState>;
   private readonly _disposeComposerSubscription: () => void;
   private readonly _disposeHostReaction: () => void;
+  private readonly _disposeModelCatalogReaction: () => void;
   private _attachmentsClientPromise: Promise<ConversationsClient['attachments']> | null = null;
   private _submissionSequence = 0;
   private _historyRefreshRequested = false;
@@ -225,6 +235,13 @@ export class AcpChatStore {
           void this._runBootstrap();
         }
       }
+    );
+    this._disposeModelCatalogReaction = reaction(
+      () => this.session?.config.current().modelOptions?.available ?? null,
+      (available) => {
+        if (available && available.length > 0) void this._rememberModelCatalog(available);
+      },
+      { equals: comparer.structural, fireImmediately: true }
     );
     this._draftHandle.autoPersist(
       () => ({
@@ -643,6 +660,7 @@ export class AcpChatStore {
   dispose(): void {
     this._disposed = true;
     this._disposeHostReaction();
+    this._disposeModelCatalogReaction();
     unregisterConversationCommands(this.conversationId);
     this._unsubs.splice(0).forEach((unsub) => unsub());
     this.session?.dispose();
@@ -1008,6 +1026,20 @@ export class AcpChatStore {
     const host = formatHostRef(hostRefFromConnectionId(getProjectSshConnectionId(this.projectId)));
     try {
       await updateProviderPreference(host, providerId, 'acp', patch);
+    } catch (error) {
+      getMementoClient().reportError(error);
+    }
+  }
+
+  private async _rememberModelCatalog(
+    available: ReadonlyArray<{ id: string; name: string; description?: string }>
+  ): Promise<void> {
+    const providerId = conversationRegistry.get(this.taskId)?.conversations.get(this.conversationId)
+      ?.data.providerId;
+    if (!providerId) return;
+    const host = formatHostRef(hostRefFromConnectionId(getProjectSshConnectionId(this.projectId)));
+    try {
+      await rememberDiscoveredModels(host, providerId, available);
     } catch (error) {
       getMementoClient().reportError(error);
     }
