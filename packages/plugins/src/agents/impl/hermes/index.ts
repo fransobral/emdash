@@ -20,6 +20,7 @@ export const plugin = definePlugin(
     },
     autoApprove: {
       kind: 'supported',
+      acpModeId: 'dont_ask',
     },
     hostDependency: {
       id: 'hermes',

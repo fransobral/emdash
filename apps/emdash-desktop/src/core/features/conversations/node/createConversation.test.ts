@@ -1,6 +1,6 @@
 import { hostRef, LOCAL_HOST_REF } from '@emdash/core/primitives/host/api';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createConversation } from './createConversation';
+import { createConversation, initialAcpModeId } from './createConversation';
 
 vi.mock('@core/features/conversations/api/node', () => ({
   conversationWireEvents: { emit: vi.fn() },
@@ -220,5 +220,21 @@ describe('createConversation', () => {
     );
     expect((deps.db as unknown as ReturnType<typeof fakeDatabase>).delete).toHaveBeenCalled();
     expect(hostConversations.delete).toHaveBeenCalledWith({ conversationId: 'conv-1' });
+  });
+});
+
+describe('initialAcpModeId', () => {
+  it("starts auto-approved chats in the agent's own auto mode", () => {
+    expect(initialAcpModeId({ provider: 'claude', autoApprove: true, modeId: 'default' })).toBe(
+      'auto'
+    );
+    expect(initialAcpModeId({ provider: 'codex', autoApprove: true })).toBe('agent-full-access');
+  });
+
+  it('keeps the remembered mode when auto-approve is off or the agent has no auto mode', () => {
+    expect(initialAcpModeId({ provider: 'claude', autoApprove: false, modeId: 'plan' })).toBe(
+      'plan'
+    );
+    expect(initialAcpModeId({ provider: 'goose', autoApprove: true, modeId: 'x' })).toBe('x');
   });
 });
