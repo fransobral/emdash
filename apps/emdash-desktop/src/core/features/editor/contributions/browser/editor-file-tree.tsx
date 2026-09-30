@@ -32,6 +32,7 @@ import {
   FileText,
   FolderOpen,
   FolderPlus,
+  FolderUp,
   Link2,
   RefreshCw,
   Scissors,
@@ -39,6 +40,7 @@ import {
 } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { cockpitFilesViewDef } from '@core/features/cockpit/contributions/views';
 import type { RenderableFileNode } from '@core/features/editor/api/browser/file-tree/tree-utils';
 import type { FileTabResource } from '@core/features/editor/api/browser/task-editor/stores/file-tab-resource';
 import {
@@ -76,6 +78,7 @@ import {
   setDraggedWorkspaceFile,
 } from '@core/primitives/drag-files/browser/drag-files';
 import { detectPlatformContext } from '@core/primitives/keybindings/api';
+import { useNavigate } from '@core/primitives/navigation/browser/navigation-hooks';
 import { disabled, enabled, hidden, type ViewScopeImpl } from '@core/primitives/view-scopes/api';
 import { useViewScope } from '@core/primitives/view-scopes/react';
 
@@ -227,6 +230,11 @@ async function importLocalFiles(args: {
 
 export const EditorFileTree = observer(function EditorFileTree() {
   const workspace = useWorkspace();
+  const { navigate } = useNavigate();
+  // The Files explorer browses the host running Emdash, so SSH workspaces can't open there.
+  const openInFiles = workspace.sshConnectionId
+    ? undefined
+    : () => navigate(cockpitFilesViewDef({ path: workspace.path }));
   const gitCheckout = workspace.get(gitCheckoutStoreToken);
   const workspaceId = useWorkspaceId();
   const taskView = useTaskComposition();
@@ -836,6 +844,14 @@ export const EditorFileTree = observer(function EditorFileTree() {
                 treeRef.current?.startDraft('directory', normalizeFileTreePath(workspace.path)),
             },
           ];
+          if (openInFiles) {
+            items.push({
+              id: 'open-in-files',
+              label: 'Abrir en Archivos',
+              icon: <FolderUp size={14} />,
+              onSelect: openInFiles,
+            });
+          }
           if (clipboard && clipboard.paths.length > 0) {
             items.push({
               id: 'paste',
@@ -940,6 +956,7 @@ export const EditorFileTree = observer(function EditorFileTree() {
         onRefresh={() => void refresh()}
         isRefreshing={isRefreshing}
         liveActionDisabledReason={liveActionDisabledReason}
+        onOpenInFiles={openInFiles}
       />
       {files?.observation.kind === 'stale' && liveActionDisabledReason && (
         <div
@@ -963,6 +980,7 @@ export function FileTreeHeaderBar({
   onRefresh,
   isRefreshing,
   liveActionDisabledReason,
+  onOpenInFiles,
 }: {
   context: FileTreeHeaderContext;
   searchQuery: string;
@@ -971,6 +989,8 @@ export function FileTreeHeaderBar({
   onRefresh(): void;
   isRefreshing: boolean;
   liveActionDisabledReason?: string | null;
+  /** Opens the project folder in the Files explorer, where parent folders are reachable. */
+  onOpenInFiles?: () => void;
 }) {
   return (
     <FileTreeToolbar
@@ -1007,6 +1027,11 @@ export function FileTreeHeaderBar({
           >
             <FolderPlus className="size-3.5" />
           </HeaderAction>
+          {onOpenInFiles && (
+            <HeaderAction label="Abrir en Archivos" onClick={onOpenInFiles}>
+              <FolderUp className="size-3.5" />
+            </HeaderAction>
+          )}
           <HeaderAction label="Collapse all" onClick={context.collapseAll}>
             <CopyMinus className="size-3.5" />
           </HeaderAction>
