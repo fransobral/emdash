@@ -104,6 +104,9 @@ importers:
       node-pty:
         specifier: 1.1.0
         version: 1.1.0
+      pdfjs-dist:
+        specifier: ^6.3.289
+        version: 6.3.289
       pidusage:
         specifier: ^4.0.1
         version: 4.0.1
@@ -7365,6 +7368,10 @@ packages:
     resolution: {integrity: sha512-//nshmD55c46FuFw26xV/xFAaB5HF9Xdap7HJBBnrKdAd6/GxDBaNA1870O79+9ueg61cZLSVc+OaFlfmObYVQ==}
     engines: {node: '>= 14.16'}
 
+  pdfjs-dist@6.3.289:
+    resolution: {integrity: sha512-ZHjSVpDa3D6izMq8/04lvkhkATUmL9px6ChPaXc1k6nU2Mrhlg1/7F0bdUqCwUjw3NsPTfPZsMDUU6ZIcRaeQw==}
+    engines: {node: '>=22.13.0 || >=24'}
+
   pe-library@0.4.1:
     resolution: {integrity: sha512-eRWB5LBz7PpDu4PUlwT0PhnQfTQJlDDdPa35urV4Osrm0t0AqQFGn+UIkU3klZvwJ8KPO3VbBFsXquA6p6kqZw==}
     engines: {node: '>=12', npm: '>=6'}
@@ -9104,6 +9111,7 @@ ignoredOptionalDependencies:
   - '@anthropic-ai/claude-agent-sdk-linux-x64-musl'
   - '@anthropic-ai/claude-agent-sdk-win32-arm64'
   - '@anthropic-ai/claude-agent-sdk-win32-x64'
+  - '@napi-rs/canvas'
   - '@openai/codex-darwin-arm64'
   - '@openai/codex-darwin-x64'
   - '@openai/codex-linux-arm64'
@@ -15868,6 +15876,8 @@ snapshots:
   pathe@2.0.3: {}
 
   pathval@2.0.1: {}
+
+  pdfjs-dist@6.3.289: {}
 
   pe-library@0.4.1: {}
 

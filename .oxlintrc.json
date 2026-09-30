@@ -162,6 +162,7 @@
         "apps/emdash-desktop/src/main/host/recovery/**/*.{ts,tsx}",
         "apps/emdash-desktop/scripts/**",
         "apps/emdash-desktop/src/core/features/editor/browser/monaco/monaco-bootstrap.ts",
+        "apps/emdash-desktop/src/core/features/editor/contributions/browser/renderers/pdf-js.ts",
         "apps/workspace-server/scripts/**",
         "apps/emdash-web/build-server.mjs",
         "apps/emdash-web/scripts/**",

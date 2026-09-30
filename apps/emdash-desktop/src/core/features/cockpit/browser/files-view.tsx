@@ -17,12 +17,14 @@ import { getProjectManagerStore } from '@core/features/projects/api/browser/stor
 import { Titlebar } from '@core/features/workbench/contributions/browser/Titlebar';
 import { cn } from '@core/primitives/styling/browser/cn';
 import { defineViewRuntime } from '@core/primitives/views/react';
+import { FilePreview } from './file-preview';
 import { FileTextEditor } from './file-text-editor';
 import {
   createFsApi,
   formatBytes,
   FsApiError,
   pathCrumbs,
+  previewKindForName,
   type FsEntry,
   type FsListing,
 } from './files-api';
@@ -89,6 +91,7 @@ export const FilesMainPanel = observer(function FilesMainPanel() {
   const [newFolder, setNewFolder] = useState<string | null>(null);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [editing, setEditing] = useState<FsEntry | null>(null);
+  const [previewing, setPreviewing] = useState<FsEntry | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(
@@ -335,7 +338,14 @@ export const FilesMainPanel = observer(function FilesMainPanel() {
         )}
         {error && <p className="text-destructive text-sm">{error}</p>}
         {uploads.length > 0 && <UploadList uploads={uploads} onClear={() => setUploads([])} />}
-        {editing ? (
+        {previewing ? (
+          <FilePreview
+            api={api}
+            entry={previewing}
+            onClose={() => setPreviewing(null)}
+            onDownload={() => void download(previewing)}
+          />
+        ) : editing ? (
           <FileTextEditor
             api={api}
             entry={editing}
@@ -366,7 +376,10 @@ export const FilesMainPanel = observer(function FilesMainPanel() {
                     key={entry.path}
                     entry={entry}
                     onOpen={() => void load(entry.path)}
-                    onEdit={() => setEditing(entry)}
+                    isPreviewable={previewKindForName(entry.name) !== null}
+                    onEdit={() =>
+                      previewKindForName(entry.name) ? setPreviewing(entry) : setEditing(entry)
+                    }
                     onDownload={() => void download(entry)}
                     onRename={(newName) => renameEntry(entry, newName)}
                     onDelete={() => void deleteEntry(entry)}

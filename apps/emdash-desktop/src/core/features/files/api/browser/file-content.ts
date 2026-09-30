@@ -41,24 +41,42 @@ export async function watchFileContent(
   };
 }
 
-/** Reads an image file's bytes and returns them as a data URL for previews. */
-export async function readImageFile(ref: HostFileRef) {
+/**
+ * Largest file read whole for an in-panel preview (images, PDFs, videos). The
+ * default read limit is 200 KB, which cut off most photos.
+ */
+export const MEDIA_PREVIEW_MAX_BYTES = 100 * 1024 * 1024;
+
+/** Reads up to MEDIA_PREVIEW_MAX_BYTES of a file for previews that need its bytes. */
+export async function readMediaFile(ref: HostFileRef) {
   const client = await getFilesClient();
-  const result = await client.fs.readBytes({ uri: encodeResourceUri(ref) });
+  const result = await client.fs.readBytes({
+    uri: encodeResourceUri(ref),
+    options: { maxBytes: MEDIA_PREVIEW_MAX_BYTES },
+  });
   if (!result.success) return result;
   const bytes = await result.data.bytes();
-  const buffer = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(buffer).set(bytes);
-  const dataUrl = await blobToDataUrl(new Blob([buffer], { type: result.data.meta.mimeType }));
+  // Copy into a plain ArrayBuffer-backed array so it can back a Blob or move to a worker.
+  const copy: Uint8Array<ArrayBuffer> = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
   return {
     success: true as const,
     data: {
-      dataUrl,
+      bytes: copy,
       mimeType: result.data.meta.mimeType,
       size: result.data.meta.totalSize,
       truncated: result.data.meta.truncated,
     },
   };
+}
+
+/** Reads an image file's bytes and returns them as a data URL for previews. */
+export async function readImageFile(ref: HostFileRef) {
+  const result = await readMediaFile(ref);
+  if (!result.success) return result;
+  const { bytes, mimeType, size, truncated } = result.data;
+  const dataUrl = await blobToDataUrl(new Blob([bytes], { type: mimeType }));
+  return { success: true as const, data: { dataUrl, mimeType, size, truncated } };
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {

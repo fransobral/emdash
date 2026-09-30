@@ -1,11 +1,13 @@
 import { Button, DropdownMenu, Input } from '@emdash/ui/react/primitives';
-import { Download, Ellipsis, File, Folder, Pencil, SquarePen, Trash2 } from 'lucide-react';
+import { Download, Ellipsis, Eye, File, Folder, Pencil, SquarePen, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@core/primitives/styling/browser/cn';
 import { formatBytes, type FsEntry } from './files-api';
 
 export interface EntryRowProps {
   entry: FsEntry;
+  /** Images, PDFs and videos open in the viewer instead of the text editor. */
+  isPreviewable?: boolean;
   onOpen: () => void;
   onEdit: () => void;
   onDownload: () => void;
@@ -13,7 +15,15 @@ export interface EntryRowProps {
   onDelete: () => void;
 }
 
-export function EntryRow({ entry, onOpen, onEdit, onDownload, onRename, onDelete }: EntryRowProps) {
+export function EntryRow({
+  entry,
+  isPreviewable = false,
+  onOpen,
+  onEdit,
+  onDownload,
+  onRename,
+  onDelete,
+}: EntryRowProps) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const isDirectory = entry.kind === 'directory';
   const isFile = entry.kind === 'file';
@@ -80,8 +90,8 @@ export function EntryRow({ entry, onOpen, onEdit, onDownload, onRename, onDelete
         <DropdownMenu.Content side="bottom" align="end">
           {isFile && (
             <DropdownMenu.Item onClick={onEdit}>
-              <SquarePen />
-              Editar
+              {isPreviewable ? <Eye /> : <SquarePen />}
+              {isPreviewable ? 'Ver' : 'Editar'}
             </DropdownMenu.Item>
           )}
           {isFile && (
