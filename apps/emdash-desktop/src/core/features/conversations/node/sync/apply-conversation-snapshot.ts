@@ -2,7 +2,7 @@ import type {
   ConversationRecord,
   ConversationRecords,
 } from '@emdash/core/runtimes/conversations/api';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import {
   conversationRegistryTable as conversations,
   createConversationRegistry,
@@ -13,7 +13,7 @@ import {
 import type { ConversationConfig } from '@core/primitives/conversations/api';
 import type { AppDb, DrizzleTx } from '@core/services/app-db/node/db';
 import { appDbPokes } from '@core/services/app-db/node/pokes';
-import type { ConversationRow } from '@core/services/app-db/node/schema';
+import { tasks, type ConversationRow } from '@core/services/app-db/node/schema';
 
 export type ConversationHostIdentity = Readonly<{
   location: 'local' | 'remote';
@@ -50,10 +50,12 @@ export async function applyConversationSnapshot(
 ): Promise<ApplyConversationSnapshotResult> {
   const now = new Date().toISOString();
   const registry = createConversationRegistry(input.db, { now: () => now });
+  const touchedTasks = new Set<string>();
   const result = input.db.transaction((tx) =>
-    applyConversationSnapshotTx(tx, input, registry, now)
+    applyConversationSnapshotTx(tx, input, registry, now, touchedTasks)
   );
   appDbPokes.conversations.poke({});
+  for (const taskId of touchedTasks) appDbPokes.tasks.poke({ taskId });
   return result;
 }
 
@@ -61,7 +63,8 @@ function applyConversationSnapshotTx(
   tx: DrizzleTx,
   input: ApplyConversationSnapshotInput,
   registry: ConversationRegistry,
-  now: string
+  now: string,
+  touchedTasks: Set<string>
 ): ApplyConversationSnapshotResult {
   const observedAt = input.observedAt ?? now;
   const hostRows = loadLiveHostRows(tx, input.host);
@@ -94,6 +97,8 @@ function applyConversationSnapshotTx(
     }
     registry.refresh(record.conversationId, observationFor(record, input.host, observedAt), tx);
     counts.refreshed += 1;
+    if (existing.taskId && touchTaskActivity(tx, existing.taskId, record.lastSessionActivityAt))
+      touchedTasks.add(existing.taskId);
   }
 
   for (const row of hostRows) {
@@ -131,6 +136,31 @@ function loadLiveHostRows(tx: DrizzleTx, host: ConversationHostIdentity): Conver
     .from(conversations)
     .where(and(liveConversations(), eq(conversations.location, host.location), hostIdentity))
     .all();
+}
+
+/**
+ * Chatting with an agent is task activity: without this the sidebar kept showing when the
+ * task was last opened ("3d") while its chat was busy right now.
+ */
+function touchTaskActivity(tx: DrizzleTx, taskId: string, activityMs: number | null): boolean {
+  if (activityMs === null) return false;
+  const activity = isoFromMs(activityMs);
+  // Task timestamps use SQLite's CURRENT_TIMESTAMP format; datetime() normalizes both.
+  return (
+    tx
+      .update(tasks)
+      .set({ lastInteractedAt: sql`datetime(${activity})` })
+      .where(
+        and(
+          eq(tasks.id, taskId),
+          or(
+            isNull(tasks.lastInteractedAt),
+            sql`datetime(${tasks.lastInteractedAt}) < datetime(${activity})`
+          )
+        )
+      )
+      .run().changes > 0
+  );
 }
 
 function observationFor(

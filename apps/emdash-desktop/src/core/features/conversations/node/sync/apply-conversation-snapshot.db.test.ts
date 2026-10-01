@@ -193,6 +193,46 @@ describe('applyConversationSnapshot', () => {
     });
   });
 
+  it('moves the task activity forward when its chat has newer activity, never back', async () => {
+    seedTask('project-1', 'task-1');
+    fixture.sqlite
+      .prepare(`UPDATE tasks SET last_interacted_at = '2026-01-03 00:00:00' WHERE id = ?`)
+      .run('task-1');
+    createConversationRegistry(fixture.db).register({
+      id: 'conv-1',
+      projectId: 'project-1',
+      taskId: 'task-1',
+      isInitialConversation: true,
+      title: 'Chat',
+      provider: 'claude',
+      type: 'acp',
+      location: 'local',
+    });
+    const lastInteractedAt = () =>
+      (
+        fixture.sqlite
+          .prepare(`SELECT last_interacted_at AS v FROM tasks WHERE id = ?`)
+          .get('task-1') as { v: string }
+      ).v;
+    const sync = (iso: string) =>
+      applyConversationSnapshot({
+        db: fixture.db,
+        host: LOCAL_HOST,
+        records: {
+          'conv-1': hostRecord({
+            conversationId: 'conv-1',
+            lastSessionActivityAt: Date.parse(iso),
+          }),
+        },
+      });
+
+    await sync('2026-01-05T12:30:00.000Z');
+    expect(lastInteractedAt()).toBe('2026-01-05 12:30:00');
+
+    await sync('2026-01-04T00:00:00.000Z');
+    expect(lastInteractedAt()).toBe('2026-01-05 12:30:00');
+  });
+
   it('sweeps unmatched rows: task-linked go visible-missing, unlinked silently untrack', async () => {
     seedTask('project-1', 'task-1');
     const registry = createConversationRegistry(fixture.db);
