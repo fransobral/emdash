@@ -107,6 +107,9 @@ export type AcpLoadError =
   | { kind: 'history_unavailable'; message: string }
   | { kind: 'generic'; message: string };
 
+
+/** How long a prompt with unknown delivery may take to show up after the connection recovers. */
+const UNDELIVERED_PROMPT_GRACE_MS = 20_000;
 export class AcpChatStore {
   readonly chatContext: ChatContext;
   readonly chatState: ChatState;
@@ -502,19 +505,47 @@ export class AcpChatStore {
       this.chatState.scroll.set(pinMode);
     }
 
+    const restoreDraft = (): void => {
+      if (this._disposed) return;
+      if (optimisticId && this.chatState.session.state.pendingPrompt?.id === optimisticId) {
+        this.chatState.session.setPendingPrompt(null);
+        this._syncMessageCount();
+      }
+      if (this.draftText !== '' || this.draftAttachments.length > 0) return;
+      this.composerModel.setText(text);
+      this.draftAttachments = attachments;
+    };
+
     void this._submitPrompt(promptId, text, promptAttachments, hiddenContext).then((outcome) => {
-      if (outcome !== 'rejected') return;
-      runInAction(() => {
-        if (this._disposed || submissionSequence !== this._submissionSequence) return;
-        if (optimisticId && this.chatState.session.state.pendingPrompt?.id === optimisticId) {
-          this.chatState.session.setPendingPrompt(null);
-          this._syncMessageCount();
-        }
-        if (this.draftText !== '' || this.draftAttachments.length > 0) return;
-        this.composerModel.setText(text);
-        this.draftAttachments = attachments;
-      });
+      if (outcome === 'rejected') {
+        runInAction(() => {
+          if (submissionSequence === this._submissionSequence) restoreDraft();
+        });
+      } else if (outcome === 'unknown') {
+        this._restoreIfUndelivered(promptId, restoreDraft);
+      }
     });
+  }
+
+  /**
+   * A prompt written to a connection that turned out to be dead never reaches the agent, and the
+   * server does not dedupe prompt ids, so resending blindly could run it twice. Once the
+   * connection had time to come back and resync, a prompt that still shows up nowhere in the
+   * transcript or queue is returned to the composer instead of vanishing.
+   */
+  private _restoreIfUndelivered(promptId: string, restoreDraft: () => void): void {
+    setTimeout(() => {
+      if (this._disposed) return;
+      runInAction(() => {
+        this._syncMessageCount();
+        if (!this.unconfirmedPromptIds.includes(promptId)) return;
+        this.unconfirmedPromptIds = this.unconfirmedPromptIds.filter((id) => id !== promptId);
+        restoreDraft();
+        toast.error('Message not delivered', {
+          description: 'The connection dropped before the agent got it. It is back in the composer.',
+        });
+      });
+    }, UNDELIVERED_PROMPT_GRACE_MS);
   }
 
   setDraftText(text: string): void {
