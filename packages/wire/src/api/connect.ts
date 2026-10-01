@@ -13,6 +13,7 @@ import {
   WireError,
   type SerializedWireError,
   type WireFileMeta,
+  type WireErrorCode,
   type WireMessage,
   type WireTransport,
 } from './protocol';
@@ -79,7 +80,14 @@ type Attachment = {
   attempt: object | null;
   attemptAbort: AbortController | null;
   attachId: string | undefined;
+  /** Consecutive transient reattach failures, for retry backoff. */
+  reattachFailures: number;
+  reattachRetry: TimerHandle | undefined;
 };
+
+/** Reattach failures the peer can recover from on its own: retry instead of going silent. */
+const TRANSIENT_REATTACH_CODES = new Set<WireErrorCode>(['TIMEOUT', 'HANDLER_ERROR']);
+const REATTACH_RETRY_MAX_MS = 15_000;
 
 export type Connection = {
   call(path: string, input: unknown, options?: CallOptions): Promise<unknown>;
@@ -548,6 +556,7 @@ export function connect(transport: WireTransport, options: ConnectOptions = {}):
         const current = attachments.get(topic);
         if (current !== entry || current.pushes.size > 0) return;
         attachments.delete(topic);
+        current.reattachRetry?.dispose();
         current.attemptAbort?.abort(new WireError('CANCELLED', 'Wire attach cancelled'));
         current.attemptAbort = null;
         try {
@@ -583,6 +592,7 @@ export function connect(transport: WireTransport, options: ConnectOptions = {}):
       disposed = true;
 
       for (const [topic, entry] of attachments) {
+        entry.reattachRetry?.dispose();
         entry.attemptAbort?.abort(new WireError('DISCONNECTED', 'Wire connection disposed'));
         try {
           transport.post({ kind: 'detach', topic });
@@ -648,6 +658,8 @@ export function connect(transport: WireTransport, options: ConnectOptions = {}):
       attempt: null,
       attemptAbort: null,
       attachId: undefined,
+      reattachFailures: 0,
+      reattachRetry: undefined,
     };
     attachments.set(topic, created);
     created.established = establishAttachment(topic, created, false);
@@ -686,6 +698,7 @@ export function connect(transport: WireTransport, options: ConnectOptions = {}):
         if (attachments.get(topic) !== entry || entry.attempt !== attempt) return;
         entry.establishedSettled = true;
         entry.attemptAbort = null;
+        entry.reattachFailures = 0;
         if (notifyReattach) notifyReattached(entry);
       },
       (error: unknown) => {
@@ -694,15 +707,36 @@ export function connect(transport: WireTransport, options: ConnectOptions = {}):
         entry.attemptAbort = null;
         const wireError = toWireError(error);
         if (notifyReattach) {
-          const retrying = wireError.code === 'DISCONNECTED';
+          // A reattach that times out or hits a transient handler failure (e.g. a
+          // worker restarting) used to drop the topic silently, freezing every
+          // subscriber until a page reload. Keep it and retry with backoff.
+          const transient = TRANSIENT_REATTACH_CODES.has(wireError.code);
+          const retrying = wireError.code === 'DISCONNECTED' || transient;
           notifyReattachError(entry, wireError, { retrying });
-          if (!retrying) attachments.delete(topic);
+          if (transient) scheduleReattachRetry(topic, entry);
+          else if (!retrying) attachments.delete(topic);
           return;
         }
         attachments.delete(topic);
       }
     );
     return established;
+  }
+
+  function scheduleReattachRetry(topic: string, entry: Attachment): void {
+    entry.reattachRetry?.dispose();
+    const delayMs = Math.min(1_000 * 2 ** entry.reattachFailures++, REATTACH_RETRY_MAX_MS);
+    entry.reattachRetry = clock.schedule(
+      delayMs,
+      () => {
+        entry.reattachRetry = undefined;
+        // A reconnect in the meantime re-establishes every attachment itself.
+        if (disposed || terminal || !connected || attachments.get(topic) !== entry) return;
+        if (!entry.establishedSettled) return;
+        entry.established = establishAttachment(topic, entry, true);
+      },
+      { unref: true }
+    );
   }
 
   function abortableAttachment(

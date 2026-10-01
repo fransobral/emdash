@@ -1,6 +1,6 @@
 import { err, ok, type Unsubscribe } from '@emdash/shared';
 import { deferred, waitFor } from '@emdash/shared/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { LiveSource, LiveUpdate } from '../api/channel';
 import { connect } from '../api/connect';
@@ -372,6 +372,44 @@ describe('wire serve/connect', () => {
     expect(errors).toEqual([{ code: 'UNKNOWN_TOPIC', retrying: false }]);
     expect(updates).toEqual([]);
     expect(transport.sent).not.toContainEqual({ kind: 'detach', topic: 'live.topic' });
+  });
+
+  it('retries reattach after a transient failure instead of freezing the topic', async () => {
+    vi.useFakeTimers();
+    try {
+      const transport = new ControlledTransport();
+      const connection = connect(transport);
+      const updates: LiveUpdate[] = [];
+      const gaps: string[] = [];
+      const errors: Array<{ code: string; retrying: boolean }> = [];
+
+      const attached = connection.attach('live.topic', (update) => updates.push(update), {
+        onReattach: () => gaps.push('gap'),
+        onReattachError: (error, context) =>
+          errors.push({ code: error.code, retrying: context.retrying }),
+      });
+      transport.resolveAttach('live.topic');
+      const detach = await attached;
+
+      transport.reconnect();
+      transport.rejectAttach('live.topic', 'TIMEOUT');
+      await vi.waitFor(() => expect(errors).toHaveLength(1));
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      transport.resolveAttach('live.topic');
+      await vi.waitFor(() => expect(gaps).toHaveLength(1));
+      transport.emit({
+        kind: 'update',
+        topic: 'live.topic',
+        update: { generation: 1, baseSequence: 0, sequence: 1, timestamp: 0, delta: {} },
+      });
+
+      expect(errors).toEqual([{ code: 'TIMEOUT', retrying: true }]);
+      expect(updates).toHaveLength(1);
+      detach();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('ignores stale reattach failures from older attempts', async () => {
