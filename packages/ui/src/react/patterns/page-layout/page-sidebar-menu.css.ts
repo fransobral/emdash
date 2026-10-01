@@ -3,6 +3,7 @@ import { recipe } from '@vanilla-extract/recipes';
 import type { RecipeVariants } from '@vanilla-extract/recipes';
 import { vars } from '@theme/core/contract/contract.css';
 import { tokenVars } from '@theme/tokens.css';
+import { MOBILE_MEDIA } from './page-layout.css';
 
 type CSSExtra = { [key: string]: string };
 
@@ -17,12 +18,25 @@ export const wrapper = style({
   flexDirection: 'column',
   paddingTop: '2.5rem',
   paddingBottom: '0.75rem',
+  '@media': {
+    [MOBILE_MEDIA]: {
+      position: 'static',
+      minHeight: 0,
+      maxHeight: 'none',
+      paddingTop: '3.5rem',
+      paddingLeft: '1rem',
+      paddingRight: '1rem',
+    },
+  },
 });
+
+const fullWidthOnMobile = { '@media': { [MOBILE_MEDIA]: { width: '100%' } } };
 
 export const header = style({
   width: '13rem',
   flexShrink: 0,
   marginBottom: '0.75rem',
+  ...fullWidthOnMobile,
   ...({ WebkitAppRegion: 'no-drag' } as CSSExtra),
 });
 
@@ -36,12 +50,14 @@ export const nav = style({
   overflowY: 'auto',
   paddingBottom: '2.5rem',
   ...({ WebkitAppRegion: 'no-drag' } as CSSExtra),
+  '@media': { [MOBILE_MEDIA]: { width: '100%', overflowY: 'visible', paddingBottom: '1rem' } },
 });
 
 export const footer = style({
   width: '13rem',
   flexShrink: 0,
   marginTop: '0.75rem',
+  ...fullWidthOnMobile,
   ...({ WebkitAppRegion: 'no-drag' } as CSSExtra),
 });
 
@@ -69,6 +85,9 @@ export const navItem = recipe({
     cursor: 'pointer',
     transition: 'background-color 150ms, box-shadow 150ms, color 150ms',
     textAlign: 'left',
+    '@media': {
+      [MOBILE_MEDIA]: { height: '44px', fontSize: tokenVars.textBase },
+    },
     selectors: {
       '&:hover': {
         backgroundColor: vars.background1,

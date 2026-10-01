@@ -71,6 +71,10 @@ export const SettingsPage = observer(function SettingsPage({
   setDetailPath: (path: string[] | undefined) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  // Phones show one pane at a time: the menu first, then the chosen page.
+  const [mobilePane, setMobilePane] = useState<'sidebar' | 'content'>(() =>
+    detail && detail.length > 0 ? 'content' : 'sidebar'
+  );
   const searchInputRef = useRef<HTMLInputElement>(null);
   const query = searchQuery.trim();
   const isSearching = query.length > 0;
@@ -153,6 +157,7 @@ export const SettingsPage = observer(function SettingsPage({
   return (
     <SettingsSearchProvider query={searchQuery} setQuery={setSearchQuery}>
       <PageLayout
+        mobileView={mobilePane}
         sidebar={
           <PageLayout.SidebarMenu
             items={visibleItems}
@@ -183,7 +188,9 @@ export const SettingsPage = observer(function SettingsPage({
             }
             onSelect={(item) => {
               const page = settingsPageContributions.find(({ id }) => id === item.id);
-              if (page) onTabChange(page.id);
+              if (!page) return;
+              onTabChange(page.id);
+              setMobilePane('content');
             }}
           />
         }
@@ -217,6 +224,16 @@ export const SettingsPage = observer(function SettingsPage({
           </PageLayout.Content>
         ) : PageComponent ? (
           <PageLayout.Content>
+            <div className="pt-12 md:hidden">
+              <button
+                type="button"
+                className="-ml-2 flex h-11 items-center gap-1 rounded-md px-2 text-sm text-foreground-muted"
+                onClick={() => setMobilePane('sidebar')}
+              >
+                <Icon name="chevron-left" size="sm" />
+                <span>Settings</span>
+              </button>
+            </div>
             <PageComponent openDetail={openDetail} />
           </PageLayout.Content>
         ) : null}
