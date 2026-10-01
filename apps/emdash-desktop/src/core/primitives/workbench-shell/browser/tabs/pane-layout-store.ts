@@ -5,6 +5,7 @@ import {
   makeObservable,
   observable,
   reaction,
+  runInAction,
   untracked,
 } from 'mobx';
 import { PaneStore } from '@core/primitives/workbench-shell/browser/tabs/pane-store';
@@ -427,12 +428,17 @@ export class PaneLayoutStore<R extends TabRegistry = TabRegistry> {
       (doc) => this.applyPersistedTabs(doc),
       { equals: comparer.structural }
     );
-    this._persistDisposer = memento.autoPersist(() => {
-      const snapshot = this.snapshot;
-      // Carry document fields the store does not own (the schema version tag)
-      // without tracking the memento's own value in this reaction.
-      return { ...untracked(() => memento.read()), ...snapshot };
-    });
+    // Carry document fields the store does not own (the schema version tag)
+    // without tracking the memento's own value in this reaction.
+    const persisted = () => ({ ...untracked(() => memento.read()), ...this.snapshot });
+    // autoPersist only saves changes, so a layout seeded before this point (the
+    // task's first chat) never reached the server and other devices saw no tabs.
+    // Start from the stored baseline and flip to the live layout to publish it once.
+    const publishSeed = observable.box(!memento.hasStoredValue && tabIdsOf(this.snapshot).size > 0);
+    this._persistDisposer = memento.autoPersist(() =>
+      publishSeed.get() ? untracked(() => memento.read()) : persisted()
+    );
+    runInAction(() => publishSeed.set(false));
   }
 
   stopPersistence(): void {
@@ -456,8 +462,7 @@ export class PaneLayoutStore<R extends TabRegistry = TabRegistry> {
       }
     }
     for (const group of doc.groups) {
-      const target =
-        this.groups.find((g) => g.paneId === group.groupId)?.pane ?? this.focusedPane;
+      const target = this.groups.find((g) => g.paneId === group.groupId)?.pane ?? this.focusedPane;
       for (const desc of group.tabManager.tabs) {
         const alreadyOpen = this.groups.some(
           ({ pane }) => pane.entries.has(desc.tabId) || pane.hasDescriptorResource(desc)

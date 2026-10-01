@@ -72,6 +72,30 @@ async function setup(initial: PaneLayoutSnapshotDocument) {
 }
 
 describe('pane layout sync across devices', () => {
+  it('publishes a layout seeded before persistence started', async () => {
+    const registry = createTabRegistry([
+      {
+        kind: 'test',
+        resourceKey: (state: { id: string }) => state.id,
+        initialize: () => ({ dispose() {} }),
+        dispose() {},
+        TabBarItem: () => null,
+        TabBarItemDragPreview: () => null,
+        TabContent: () => null,
+      },
+    ]);
+    const { memento, doc } = fakeMemento(null);
+    const store = new PaneLayoutStore(registry, { viewId: 'task' }, memento);
+    stores.push(store);
+    await store.hydrate();
+    store.open('test', { id: 'a' }, { preview: false });
+
+    store.startPersistence();
+
+    const saved = doc.get()?.groups.flatMap((g) => g.tabManager.tabs.map((t) => t.id));
+    expect(saved).toEqual(['a']);
+  });
+
   it('shows a tab opened on another device without switching the active tab', async () => {
     const { store, writeRemote, openTabIds } = await setup(docWith([tab('a')], 'tab-a'));
 
