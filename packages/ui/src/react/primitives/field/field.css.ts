@@ -5,6 +5,10 @@ import { labelBase } from '../label/label.css';
 import { vars } from '@theme/core/contract/contract.css';
 import { tokenVars } from '@theme/tokens.css';
 
+
+/** Phone widths, matching the page layout breakpoint. */
+const PHONE_MEDIA = 'screen and (max-width: 767px)';
+
 export const field = recipe({
   base: {
     display: 'flex',
@@ -21,6 +25,8 @@ export const field = recipe({
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: '1rem',
+        // On phones a wide control drops below the label instead of squeezing it.
+        '@media': { [PHONE_MEDIA]: { flexWrap: 'wrap', rowGap: '0.5rem' } },
       },
     },
   },
@@ -38,6 +44,7 @@ export const fieldContent = style({
   flex: 1,
   gap: '0.25rem',
   minWidth: 0,
+  '@media': { [PHONE_MEDIA]: { flexBasis: '11rem' } },
 });
 
 // Constrains the control on the right side of a horizontal field row.
@@ -52,6 +59,7 @@ export const fieldControlSlot = style({
   flexShrink: 0,
   maxWidth: '12rem',
   width: '100%',
+  '@media': { [PHONE_MEDIA]: { width: 'auto', maxWidth: '100%', flexShrink: 1 } },
 });
 
 // Label typography is owned by the standalone Label primitive; Field.Label

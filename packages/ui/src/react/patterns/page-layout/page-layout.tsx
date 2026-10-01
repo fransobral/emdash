@@ -16,6 +16,11 @@ export interface PageLayoutProps {
    * Default: false.
    */
   draggable?: boolean;
+  /**
+   * Which pane a phone-width screen shows when `sidebar` is set: the menu, the content, or
+   * both stacked (default). Wide screens always show both side by side.
+   */
+  mobileView?: 'sidebar' | 'content' | 'both';
   className?: string;
   children: React.ReactNode;
 }
@@ -40,14 +45,24 @@ export interface PageLayoutProps {
  * </PageLayout>
  * ```
  */
-function PageLayoutRoot({ sidebar, draggable = false, className, children }: PageLayoutProps) {
+function PageLayoutRoot({
+  sidebar,
+  draggable = false,
+  mobileView = 'both',
+  className,
+  children,
+}: PageLayoutProps) {
   return (
     <div className={cx(styles.outer, className)}>
       <div className={cx(styles.scroll, draggable && styles.dragRegion)}>
         {sidebar ? (
           <div className={styles.containerGrid}>
-            {sidebar}
-            {children}
+            <div className={cx(styles.gridPane, mobileView === 'content' && styles.hiddenOnMobile)}>
+              {sidebar}
+            </div>
+            <div className={cx(styles.gridPane, mobileView === 'sidebar' && styles.hiddenOnMobile)}>
+              {children}
+            </div>
           </div>
         ) : (
           <div className={styles.containerSingle}>{children}</div>

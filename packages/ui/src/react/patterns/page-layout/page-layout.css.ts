@@ -17,6 +17,9 @@ export const noDragRegion = style({
   ...({ WebkitAppRegion: 'no-drag' } as CSSExtra),
 });
 
+/** Phone widths: the sidebar+content grid collapses to one pane at a time. */
+export const MOBILE_MEDIA = 'screen and (max-width: 767px)';
+
 // ── Root outer / scroll container ─────────────────────────────────────────────
 
 export const outer = style({
@@ -49,6 +52,27 @@ export const containerGrid = style({
   display: 'grid',
   gridTemplateColumns: '13rem minmax(0, 1fr)',
   gap: '2rem',
+  '@media': {
+    [MOBILE_MEDIA]: {
+      display: 'block',
+      paddingLeft: 0,
+      paddingRight: 0,
+    },
+  },
+});
+
+/** Keeps each pane a direct grid item on wide screens. */
+export const gridPane = style({
+  display: 'contents',
+});
+
+/** Hides the pane that is not shown on phones. */
+export const hiddenOnMobile = style({
+  '@media': {
+    [MOBILE_MEDIA]: {
+      display: 'none',
+    },
+  },
 });
 
 /** Single centered column (Automations style). */
