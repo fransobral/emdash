@@ -1237,6 +1237,8 @@ export function ChatComposer({
                   size="xs"
                   icon
                   className={cx(styles.sendButtonRound, styles.mobileTouchTarget)}
+                  // Keep focus in the editor so the mobile keyboard stays open after sending.
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={() => handleSubmit(editorRef.current?.getText() ?? '')}
                   disabled={disabled || (!isWorking && !canSubmit)}
                   aria-label={isWorking ? 'Queue message' : 'Send message'}

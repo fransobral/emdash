@@ -213,8 +213,10 @@ const ComposerForStore = observer(function ComposerForStore({
   const { value: promptLibrary } = usePromptLibrary();
   const disabledReason = projectAvailabilityUi.getLiveActionDisabledReason(store.projectId);
 
-  // Autofocus when the slot becomes available.
+  // Autofocus when the slot becomes available. Not on touch screens: focus without a tap
+  // leaves the editor focused but keyboardless (iOS), so the next tap does not open it.
   useEffect(() => {
+    if (window.matchMedia?.('(pointer: coarse)').matches) return;
     editorApiRef.current?.focus();
   }, [composerSlot]);
 

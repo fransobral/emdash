@@ -7,7 +7,12 @@ import { buildMentionExtension } from './extensions/mention';
 import { buildSlashCommandExtension } from './extensions/slash-command';
 import { buildSubmitKeymap } from './extensions/submit-keymap';
 import { serializeDoc, serializeNode } from './serialize';
-import type { MentionItem, PromptEditorProps, PromptEditorRef } from './types';
+import type {
+  MentionItem,
+  PromptEditorProps,
+  PromptEditorRef,
+  PromptSubmitShortcut,
+} from './types';
 import * as styles from './prompt-editor.css';
 
 type SuggestionRenderer = NonNullable<SuggestionOptions['render']>;
@@ -363,6 +368,16 @@ function mentionSignature(mentions: PromptEditorProps['mentions']): string {
   );
 }
 
+/**
+ * On touch screens the keyboard's Enter key writes a new line, as in messaging apps; the send
+ * button submits. Elsewhere Enter submits.
+ */
+function defaultSubmitShortcut(): PromptSubmitShortcut {
+  const isTouchPrimary =
+    typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true;
+  return isTouchPrimary ? 'none' : 'enter';
+}
+
 function createEditor(model: PromptEditorModel, content: JSONContent): Editor {
   const editor = new Editor({
     extensions: [
@@ -422,7 +437,7 @@ function createEditor(model: PromptEditorModel, content: JSONContent): Editor {
         (item) => model.view?.options.onCommand?.(item)
       ),
       buildSubmitKeymap({
-        getShortcut: () => model.view?.options.submitShortcut ?? 'enter',
+        getShortcut: () => model.view?.options.submitShortcut ?? defaultSubmitShortcut(),
         onSubmit: () => {
           const current = model.view?.options;
           if (!current?.onSubmit) return;

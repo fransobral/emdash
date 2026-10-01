@@ -14,12 +14,15 @@ import {
   streamTransport,
   type WireTransport,
 } from '@emdash/wire/rpc';
+import { HEARTBEAT_FRAME, startHeartbeat } from './socket-heartbeat';
 import { installStaleSocketGuard } from './stale-socket-guard';
 
 const TOKEN_STORAGE_KEY = 'emdash-web-token';
 
+type DroppableSocket = { readonly readyState: number; close(): void };
+
 /** The socket currently carrying the wire connection, for the stale-socket guard. */
-let currentSocket: WebSocket | null = null;
+let currentSocket: DroppableSocket | null = null;
 
 export function captureTokenFromUrl(): void {
   const params = new URLSearchParams(window.location.search);
@@ -45,21 +48,40 @@ function webSocketUrl(token: string): string {
   return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
 }
 
-/** Adapts a browser WebSocket to the ReadableLike/WritableLike pair streamTransport expects. */
+/**
+ * Adapts a browser WebSocket to the ReadableLike/WritableLike pair streamTransport expects.
+ * `drop` reports the disconnect right away instead of waiting for a close handshake that a
+ * dead connection never completes.
+ */
 function browserStreamAdapter(ws: WebSocket): {
   input: { on(event: string, cb: (chunk: Uint8Array | string) => void): unknown };
   output: { write(chunk: string | Uint8Array): unknown };
+  drop: () => void;
 } {
   const dataListeners = new Set<(chunk: Uint8Array | string) => void>();
   const closeListeners = new Set<() => void>();
+  let closed = false;
+  const notifyClose = (): void => {
+    if (closed) return;
+    closed = true;
+    heartbeat.stop();
+    for (const listener of closeListeners) listener();
+  };
+  const drop = (): void => {
+    ws.onmessage = null;
+    ws.onclose = null;
+    notifyClose();
+    ws.close();
+  };
+  const heartbeat = startHeartbeat({ send: (frame) => ws.send(frame), onDead: drop });
   ws.onmessage = (event: MessageEvent) => {
+    heartbeat.received();
+    if (event.data === HEARTBEAT_FRAME) return;
     const chunk =
       typeof event.data === 'string' ? event.data : new Uint8Array(event.data as ArrayBuffer);
     for (const listener of dataListeners) listener(chunk);
   };
-  ws.onclose = () => {
-    for (const listener of closeListeners) listener();
-  };
+  ws.onclose = notifyClose;
   ws.onerror = () => {
     /* close follows; streamTransport treats it as disconnect */
   };
@@ -77,6 +99,7 @@ function browserStreamAdapter(ws: WebSocket): {
         return true;
       },
     },
+    drop,
   };
 }
 
@@ -93,8 +116,13 @@ function openWebSocketTransport(token: string): Promise<WireTransport> {
     ws.onopen = () => {
       ws.onopen = null;
       ws.onerror = null;
-      currentSocket = ws;
-      const { input, output } = browserStreamAdapter(ws);
+      const { input, output, drop } = browserStreamAdapter(ws);
+      currentSocket = {
+        get readyState() {
+          return ws.readyState;
+        },
+        close: drop,
+      };
       resolve(streamTransport(input, output));
     };
     ws.onclose = (event: CloseEvent) => {

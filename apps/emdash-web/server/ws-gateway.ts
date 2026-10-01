@@ -40,6 +40,16 @@ export function createRoutingController(controllers: Record<string, Controller>)
   };
 }
 
+/**
+ * Text frame the browser sends to check the socket is alive; the server echoes
+ * it. Must match `HEARTBEAT_FRAME` in `web/socket-heartbeat.ts`. Wire frames
+ * are length-prefixed, so a bare text frame can never be confused with one.
+ */
+export const HEARTBEAT_FRAME = '__emdash_heartbeat';
+
+/** Server pings drop sockets whose peer vanished and keep proxies from idling them out. */
+const PING_INTERVAL_MS = 25_000;
+
 /** Adapts a connected `ws` socket to the ReadableLike/WritableLike pair streamTransport expects. */
 function wsStreamAdapter(ws: WebSocket): {
   input: {
@@ -49,7 +59,12 @@ function wsStreamAdapter(ws: WebSocket): {
 } {
   const dataListeners = new Set<(chunk: Uint8Array | string) => void>();
   const closeListeners = new Set<() => void>();
-  ws.on('message', (chunk: Buffer) => {
+  ws.on('message', (chunk: Buffer, isBinary: boolean) => {
+    // Liveness probes from the browser stay out of the wire byte stream.
+    if (!isBinary && chunk.toString() === HEARTBEAT_FRAME) {
+      ws.send(HEARTBEAT_FRAME);
+      return;
+    }
     for (const listener of dataListeners) listener(chunk);
   });
   ws.on('close', () => {
@@ -124,6 +139,21 @@ export function attachWireGateway(
   wss.on('connection', (ws: WebSocket) => {
     const { input, output } = wsStreamAdapter(ws);
     const dispose = serve(streamTransport(input, output), controller);
-    ws.on('close', () => dispose());
+    let alive = true;
+    ws.on('pong', () => {
+      alive = true;
+    });
+    const pinger = setInterval(() => {
+      if (!alive) {
+        ws.terminate();
+        return;
+      }
+      alive = false;
+      ws.ping();
+    }, PING_INTERVAL_MS);
+    ws.on('close', () => {
+      clearInterval(pinger);
+      dispose();
+    });
   });
 }
