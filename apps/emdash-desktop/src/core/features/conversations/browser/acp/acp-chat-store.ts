@@ -110,6 +110,9 @@ export type AcpLoadError =
 
 /** How long a prompt with unknown delivery may take to show up after the connection recovers. */
 const UNDELIVERED_PROMPT_GRACE_MS = 20_000;
+/** Consecutive automatic reattaches after the runtime reports the chat detached. */
+const MAX_DETACHED_RECOVERIES = 3;
+
 export class AcpChatStore {
   readonly chatContext: ChatContext;
   readonly chatState: ChatState;
@@ -136,6 +139,7 @@ export class AcpChatStore {
   private readonly _disposeComposerSubscription: () => void;
   private readonly _disposeHostReaction: () => void;
   private readonly _disposeModelCatalogReaction: () => void;
+  private readonly _disposeVisibilityListener: () => void;
   private _attachmentsClientPromise: Promise<ConversationsClient['attachments']> | null = null;
   private _submissionSequence = 0;
   private _historyRefreshRequested = false;
@@ -145,6 +149,7 @@ export class AcpChatStore {
   private _attachmentRecovery: Scope | null = null;
   private _attachedHostGeneration: number | undefined;
   private _bootstrapFailed = false;
+  private _detachedRecoveries = 0;
 
   constructor(
     readonly conversationId: string,
@@ -239,6 +244,7 @@ export class AcpChatStore {
         }
       }
     );
+    this._disposeVisibilityListener = this._refreshHistoryWhenVisible();
     this._disposeModelCatalogReaction = reaction(
       () => this.session?.config.current().modelOptions?.available ?? null,
       (available) => {
@@ -691,6 +697,7 @@ export class AcpChatStore {
   dispose(): void {
     this._disposed = true;
     this._disposeHostReaction();
+    this._disposeVisibilityListener();
     this._disposeModelCatalogReaction();
     unregisterConversationCommands(this.conversationId);
     this._unsubs.splice(0).forEach((unsub) => unsub());
@@ -1082,6 +1089,20 @@ export class AcpChatStore {
     );
   }
 
+  /**
+   * A backgrounded tab (mobile, sleeping laptop) can miss the commit of a turn it was
+   * watching; catch up as soon as it is visible again rather than waiting for a reload.
+   */
+  private _refreshHistoryWhenVisible(): () => void {
+    if (typeof document === 'undefined') return () => {};
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && this.session?.usable)
+        this._requestHistoryRefresh();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }
+
   private _requestHistoryRefresh(): void {
     this._historyRefreshRequested = true;
     if (this._historyRefreshTask || this.historyLoading) return;
@@ -1144,6 +1165,7 @@ export class AcpChatStore {
         runInAction(() => {
           applied = transcript.applyPage(history.data);
           if (!applied) return;
+          this._detachedRecoveries = 0;
           this.historyKnown = true;
           this.loadError = null;
           this._bootstrapFailed = false;
@@ -1168,6 +1190,17 @@ export class AcpChatStore {
         conversationId: this.conversationId,
         error,
       });
+      if (
+        error instanceof AcpStartError &&
+        error.errorType === 'invalid_state' &&
+        this._detachedRecoveries < MAX_DETACHED_RECOVERIES
+      ) {
+        // The runtime lost this conversation (worker restart): reattach as a reload would,
+        // instead of leaving the transcript frozen behind an error until F5.
+        this._detachedRecoveries++;
+        this._recoverAttachment(session, this._attachedHostGeneration);
+        return true;
+      }
       if (error instanceof AcpStartError) {
         runInAction(() => {
           this.loadError = toLoadError(error);
