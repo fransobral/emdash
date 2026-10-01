@@ -688,3 +688,109 @@ describe('SessionCell idle turns and queue commands', () => {
     expect(cell.sessionState.queuedPrompts.map((prompt) => prompt.id)).toEqual([second.id]);
   });
 });
+
+describe('SessionCell codex usage-limit failover', () => {
+  const usageLimitError = {
+    message: 'Internal error',
+    data: {
+      codexErrorInfo: 'usageLimitExceeded',
+      message:
+        "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Oct 3rd, 2099 2:10 PM.",
+    },
+  };
+
+  function makeFailoverCell(codexFailoverEligible: boolean) {
+    const agent = new FakeAcpAgent();
+    const onUsageLimitExceeded = vi.fn();
+    const cell = new SessionCell({
+      conversationId: 'conv-1',
+      providerId: 'codex',
+      acpSessionId: 'session-1',
+      agent,
+      resolveAttachment: vi.fn().mockResolvedValue({ data: '', mimeType: 'image/png' }),
+      logger: noopLogger,
+      callbacks: { onUsageLimitExceeded },
+      codexFailoverEligible,
+    });
+    cell.applySessionReady();
+    return { cell, agent, onUsageLimitExceeded };
+  }
+
+  it('drains the queue, settles the turn, and reports the failover when eligible', async () => {
+    const { cell, agent, onUsageLimitExceeded } = makeFailoverCell(true);
+    agent.prompt = vi.fn().mockRejectedValue(usageLimitError);
+
+    const result = await cell.prompt({ text: 'first' });
+    // queuePrompt here goes through the public queue path; it is not dispatched
+    // because the turn above is already settled by the time control returns.
+    cell.queuePrompt({ text: 'second' });
+
+    expect(result.success).toBe(false);
+    expect(cell.sessionState.queuedPrompts).toHaveLength(1);
+    expect(onUsageLimitExceeded).toHaveBeenCalledTimes(1);
+    const info = onUsageLimitExceeded.mock.calls[0][0];
+    expect(info.prompt.text).toBe('first');
+    expect(info.queuedPrompts).toEqual([]);
+    expect(info.resetAt).toBe(new Date(2099, 9, 3, 14, 10, 0, 0).getTime());
+  });
+
+  it('drains prompts that were already queued behind the failed one', async () => {
+    const { cell, agent, onUsageLimitExceeded } = makeFailoverCell(true);
+    let resolveFirst!: (value: { stopReason: 'end_turn' }) => void;
+    agent.prompt = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ stopReason: 'end_turn' }>((resolve) => {
+            resolveFirst = resolve;
+          })
+      )
+      .mockRejectedValueOnce(usageLimitError);
+
+    const first = cell.prompt({ text: 'working' });
+    // Let sendPromptInternal's microtask chain reach `await agent.prompt(...)` so
+    // `resolveFirst` is assigned before it is used below.
+    await Promise.resolve();
+    await Promise.resolve();
+    cell.queuePrompt({ text: 'queued-1' });
+    cell.queuePrompt({ text: 'queued-2' });
+    resolveFirst({ stopReason: 'end_turn' });
+    await first;
+    // The TurnEnded from the first turn dequeues "queued-1" synchronously; let it fail.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(cell.sessionState.queuedPrompts).toHaveLength(0);
+    expect(onUsageLimitExceeded).toHaveBeenCalledTimes(1);
+    const info = onUsageLimitExceeded.mock.calls[0][0];
+    expect(info.prompt.text).toBe('queued-1');
+    expect(info.queuedPrompts.map((p: { text: string }) => p.text)).toEqual(['queued-2']);
+    // The process is limited: the still-queued prompt must never have been sent into it.
+    expect(agent.prompt).toHaveBeenCalledTimes(2);
+  });
+
+  it('does nothing special when not eligible (surfaces the error as today)', async () => {
+    const { cell, agent, onUsageLimitExceeded } = makeFailoverCell(false);
+    agent.prompt = vi.fn().mockRejectedValue(usageLimitError);
+    cell.queuePrompt({ text: 'behind' });
+
+    const result = await cell.prompt({ text: 'first' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(result.success).toBe(false);
+    expect(onUsageLimitExceeded).not.toHaveBeenCalled();
+    // Today's behavior: the already-queued prompt still auto-advances into the (still
+    // limited) process after the error, instead of being held back for a fallback retry.
+    expect(agent.prompt).toHaveBeenCalledTimes(2);
+    expect(cell.sessionState.queuedPrompts).toHaveLength(0);
+  });
+
+  it('ignores a non-usage-limit error even when eligible', async () => {
+    const { cell, agent, onUsageLimitExceeded } = makeFailoverCell(true);
+    agent.prompt = vi.fn().mockRejectedValue(new Error('boom'));
+
+    const result = await cell.prompt({ text: 'first' });
+
+    expect(result.success).toBe(false);
+    expect(onUsageLimitExceeded).not.toHaveBeenCalled();
+  });
+});

@@ -25,6 +25,7 @@ import type {
   AcpStartError,
   HistoryPage,
   NormalizedEvent,
+  PromptInput,
   SessionState,
   TerminalState,
 } from '#runtimes/acp/api';
@@ -37,6 +38,7 @@ import type {
   AcpConnectionSource,
 } from '#runtimes/acp/node/connection/source';
 import type { AcpChatHistory, SessionCell } from '#runtimes/acp/node/session/cell';
+import type { UsageLimitFailoverInfo } from '#runtimes/acp/node/session/cell-deps';
 import {
   closedSessionState,
   createAcpSessionLiveHost,
@@ -57,6 +59,7 @@ import type {
   SessionSnapshotJudgment,
 } from '#services/session-lifecycle/api';
 import { createSessionLifecycle } from '#services/session-lifecycle/node';
+import { CodexFallbackState } from './codex-fallback-state';
 import { ConversationHandle } from './conversation-handle';
 import type {
   ActivationStartError,
@@ -117,6 +120,7 @@ export class SessionManager {
   private readonly lifecycle: ConversationSessionLifecycle;
   private readonly listProjector: SessionsListProjector;
   private readonly materializer: SessionMaterializer;
+  private readonly codexFallback: CodexFallbackState;
 
   constructor(
     private readonly deps: AcpRuntimeDeps & { logger: Logger },
@@ -125,6 +129,7 @@ export class SessionManager {
     private readonly ports: { fs: FsPort; terminals: TerminalPort }
   ) {
     this.clock = deps.clock ?? systemClock;
+    this.codexFallback = new CodexFallbackState(deps.codexFallbackHome);
     this.router = new SessionRouter(
       {
         onSessionUpdate: (conversationId, connection, params, event) =>
@@ -141,26 +146,31 @@ export class SessionManager {
       this.clock,
       (conversationId) => this.lifecycle.activity(conversationId)
     );
-    this.materializer = new SessionMaterializer(deps, connections, {
-      isCurrent: (entry, epoch) => entry.isEpochCurrent(epoch),
-      onRecordCreated: (record, scope) => {
-        record.conversation.attachProvisional(record);
-        scope.add(() => this.teardownRecord(record));
-      },
-      onRecordChanged: (record) => record.conversation.syncRecord(record),
-      onRecordClosed: (record) => {
-        if (!record.conversation.isCurrentRecord(record)) return;
-        void this.stop(record.input.conversationId, 'process-exited');
-      },
-      discardRecord: (record) => {
-        record.conversation.discardProvisional(record);
-        this.discardReplacedRecord(record);
-      },
-      registerRoute: (processOwner, acpSessionId, conversationId) =>
-        this.router.register(processOwner, acpSessionId, conversationId),
-      beginLoad: (processOwner, acpSessionId, conversationId) =>
-        this.router.beginLoad(processOwner, acpSessionId, conversationId),
-    });
+    this.materializer = new SessionMaterializer(
+      { ...deps, codexFallback: this.codexFallback },
+      connections,
+      {
+        isCurrent: (entry, epoch) => entry.isEpochCurrent(epoch),
+        onRecordCreated: (record, scope) => {
+          record.conversation.attachProvisional(record);
+          scope.add(() => this.teardownRecord(record));
+        },
+        onRecordChanged: (record) => record.conversation.syncRecord(record),
+        onRecordClosed: (record) => {
+          if (!record.conversation.isCurrentRecord(record)) return;
+          void this.stop(record.input.conversationId, 'process-exited');
+        },
+        discardRecord: (record) => {
+          record.conversation.discardProvisional(record);
+          this.discardReplacedRecord(record);
+        },
+        registerRoute: (processOwner, acpSessionId, conversationId) =>
+          this.router.register(processOwner, acpSessionId, conversationId),
+        beginLoad: (processOwner, acpSessionId, conversationId) =>
+          this.router.beginLoad(processOwner, acpSessionId, conversationId),
+        onUsageLimitExceeded: (record, info) => this.handleCodexUsageLimitExceeded(record, info),
+      }
+    );
     this.lifecycle = createSessionLifecycle({
       name: 'SessionManager',
       logger: deps.logger,
@@ -1016,6 +1026,57 @@ export class SessionManager {
     void this.teardownRecord(record);
   }
 
+  /**
+   * Activates the fallback `CODEX_HOME` window and fails this conversation over to it:
+   * stops the limited process, relaunches against the fallback env (the stored provider
+   * session id drives a `loadSession` so history is preserved), and re-queues the prompt
+   * that failed ahead of whatever was still queued behind it.
+   */
+  private handleCodexUsageLimitExceeded(record: SessionRecord, info: UsageLimitFailoverInfo): void {
+    this.codexFallback.activate(info.resetAt);
+    this.deps.logger.info(
+      'SessionManager: codex usage limit hit, switching conversation to fallback home',
+      {
+        conversationId: record.input.conversationId,
+        resetAt: new Date(info.resetAt).toISOString(),
+      }
+    );
+    void this.failoverCodexConversation(record, info).catch((error: unknown) => {
+      this.deps.logger.warn('SessionManager: failed to fail over conversation to fallback home', {
+        conversationId: record.input.conversationId,
+        error: String(error),
+      });
+    });
+  }
+
+  private async failoverCodexConversation(
+    record: SessionRecord,
+    info: UsageLimitFailoverInfo
+  ): Promise<void> {
+    const conversationId = record.input.conversationId;
+    const entry = this.retained.get(conversationId);
+    if (!entry || entry !== record.conversation) return;
+    const requeue: PromptInput[] = [
+      toPromptInput(info.prompt),
+      ...info.queuedPrompts.map(toPromptInput),
+    ];
+
+    await this.stop(conversationId, 'usage-limit-fallback');
+
+    const current = this.retained.get(conversationId);
+    if (!current || current !== entry || !current.isCurrent()) return;
+    current.requeueForFailover(requeue);
+    current.saveIntent();
+
+    const relaunched = await this.activateEntry(current, false);
+    if (!relaunched.success) {
+      this.deps.logger.warn('SessionManager: failed to relaunch conversation on fallback home', {
+        conversationId,
+        error: relaunched.error,
+      });
+    }
+  }
+
   private mapWakeError<E>(error: ActivationStartError): Result<never, E | AcpWakeFailure> {
     if (error.type === 'conversation_not_found') return err(error) as Result<never, E>;
     return err({ kind: 'wake-failed', error });
@@ -1068,4 +1129,16 @@ function isUnambiguousStartError(error: unknown): error is ActivationStartError 
   return ACP_UNAMBIGUOUS_START_ERROR_TYPES.includes(
     String(error.type) as (typeof ACP_UNAMBIGUOUS_START_ERROR_TYPES)[number]
   );
+}
+
+function toPromptInput(prompt: {
+  text: string;
+  hiddenContext?: string;
+  attachments?: PromptInput['attachments'];
+}): PromptInput {
+  return {
+    text: prompt.text,
+    ...(prompt.hiddenContext !== undefined && { hiddenContext: prompt.hiddenContext }),
+    ...(prompt.attachments !== undefined && { attachments: prompt.attachments }),
+  };
 }

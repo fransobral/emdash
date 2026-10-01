@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs';
 import os from 'node:os';
+import { join } from 'node:path';
 import type { Logger } from '@emdash/shared/logger';
 import type { PluginRegistry } from '@emdash/shared/plugins';
 import { defineWireComponent, requireContract } from '@emdash/wire/worker';
@@ -94,6 +96,7 @@ export function createAcpComponent(options: CreateAcpComponentOptions) {
         }),
         lifecycle: config.lifecycle,
         logger: runtimeLogger,
+        codexFallbackHome: resolveCodexFallbackHome(),
       } satisfies AcpRuntimeDeps);
       void acp.reconcile();
 
@@ -104,4 +107,16 @@ export function createAcpComponent(options: CreateAcpComponentOptions) {
       });
     },
   });
+}
+
+/**
+ * Resolves the Codex usage-limit fallback home from `EMDASH_CODEX_FALLBACK_HOME`. The
+ * feature stays fully disabled (returns `undefined`) unless the path is set and already
+ * holds a logged-in `auth.json`, so a misconfigured env var never launches Codex against
+ * an unauthenticated home.
+ */
+function resolveCodexFallbackHome(): string | undefined {
+  const raw = process.env.EMDASH_CODEX_FALLBACK_HOME?.trim();
+  if (!raw) return undefined;
+  return existsSync(join(raw, 'auth.json')) ? raw : undefined;
 }
