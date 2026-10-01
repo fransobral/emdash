@@ -43,6 +43,7 @@ import {
 } from '#runtimes/acp/node/machine/machine';
 import { createMachineEffectDriver, type MachineEffectDriver } from '../machine/primitive';
 import type { PromptAcceptance, SessionCellDeps, SessionPromptResult } from './cell-deps';
+import { detectUsageLimit } from './codex-usage-limit';
 import { PermissionBroker } from './permission-broker';
 import { RawAcpLog, type RawAcpEvent } from './raw-log';
 
@@ -642,9 +643,29 @@ export class SessionCell {
         sessionId: this.acpSessionId,
         stopReason: null,
       });
+      // Detect and drain the queue *before* settling the turn: settling dispatches
+      // `TurnEnded`, which (when the queue is non-empty) immediately sends the next
+      // queued prompt into this same, now usage-limited process. Draining first keeps
+      // those prompts out of harm's way so they can be replayed against the fallback.
+      const usageLimit = this.deps.codexFailoverEligible ? detectUsageLimit(e, Date.now()) : null;
+      const drainedQueue = usageLimit ? this.drainQueuedPrompts() : [];
       this.settleTurn({ kind: 'error', reason: 'prompt_failed' });
+      if (usageLimit) {
+        this.deps.callbacks?.onUsageLimitExceeded?.({
+          resetAt: usageLimit.resetAt,
+          prompt,
+          queuedPrompts: drainedQueue,
+        });
+      }
       return err;
     }
+  }
+
+  /** Snapshots and removes every currently queued prompt, in order. */
+  private drainQueuedPrompts(): QueuedPrompt[] {
+    const queued = [...this.machine.sessionState().queuedPrompts];
+    for (const queuedPrompt of queued) this.removeQueuedPrompt(queuedPrompt.id);
+    return queued;
   }
 
   private seedTranscriptMeta(

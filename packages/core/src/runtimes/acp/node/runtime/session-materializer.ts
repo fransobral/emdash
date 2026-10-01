@@ -17,7 +17,11 @@ import {
   type AcpConnectionSource,
 } from '#runtimes/acp/node/connection/source';
 import { SessionCell } from '#runtimes/acp/node/session/cell';
-import type { SessionCellCallbacks } from '#runtimes/acp/node/session/cell-deps';
+import type {
+  SessionCellCallbacks,
+  UsageLimitFailoverInfo,
+} from '#runtimes/acp/node/session/cell-deps';
+import type { CodexFallbackState } from './codex-fallback-state';
 import type { ConversationHandle } from './conversation-handle';
 import type { ConnectionLeaseState, SessionRecord } from './conversation-types';
 import { registrationsToAcpMcpServers, summarizeAcpMcpServers } from './mcp-servers';
@@ -44,6 +48,7 @@ export interface SessionMaterializerCallbacks {
   discardRecord(record: SessionRecord): void;
   registerRoute(processOwner: string, acpSessionId: string, conversationId: string): void;
   beginLoad(processOwner: string, acpSessionId: string, conversationId: string): () => void;
+  onUsageLimitExceeded(record: SessionRecord, info: UsageLimitFailoverInfo): void;
 }
 
 export class SessionMaterializer {
@@ -52,6 +57,7 @@ export class SessionMaterializer {
   constructor(
     private readonly deps: Pick<AcpRuntimeDeps, 'agentHost' | 'resolveAttachment'> & {
       logger: Logger;
+      codexFallback: CodexFallbackState;
     },
     private readonly connections: AcpConnectionSource,
     private readonly callbacks: SessionMaterializerCallbacks
@@ -67,10 +73,18 @@ export class SessionMaterializer {
     const binding = this.deps.agentHost.resolveAcp(input.providerId);
     if (!binding) return acpErr.providerUnsupported(input.providerId);
 
+    // Applied here, the single point where the connection (and therefore spawn) env is
+    // built, so every Codex launch or relaunch picks up the fallback home while it is
+    // active, and launches after it expires fall straight back to the default env.
+    const codexFallbackOverlay = this.deps.codexFallback.envOverlay(input.providerId, Date.now());
+    const effectiveEnv = codexFallbackOverlay
+      ? { ...input.env, ...codexFallbackOverlay }
+      : input.env;
+    const usingCodexFallbackHome = codexFallbackOverlay !== undefined;
     const connectionKey: AcpConnectionKey = {
       providerId: input.providerId,
       cwd: input.cwd,
-      env: input.env,
+      env: effectiveEnv,
     };
     const acquire = await acquireResourceAsResult(
       this.connections,
@@ -116,7 +130,8 @@ export class SessionMaterializer {
           connectionLeaseState,
           input.sessionId,
           epoch,
-          scope
+          scope,
+          usingCodexFallbackHome
         );
         let loaded = false;
         let endLoad = () => {};
@@ -198,7 +213,8 @@ export class SessionMaterializer {
           connectionLeaseState,
           response.sessionId,
           epoch,
-          scope
+          scope,
+          usingCodexFallbackHome
         );
         record.cell.applySessionMeta({
           modes: response.modes,
@@ -283,9 +299,12 @@ export class SessionMaterializer {
     connectionLeaseState: ConnectionLeaseState,
     acpSessionId: string,
     epoch: number,
-    scope: Scope
+    scope: Scope,
+    usingCodexFallbackHome: boolean
   ): SessionRecord {
     const recordRef: { current?: SessionRecord } = {};
+    const codexFailoverEligible =
+      input.providerId === 'codex' && this.deps.codexFallback.configured && !usingCodexFallbackHome;
     const callbacks: SessionCellCallbacks = {
       onSessionStateChanged: () => {
         if (recordRef.current) this.callbacks.onRecordChanged(recordRef.current);
@@ -299,6 +318,9 @@ export class SessionMaterializer {
       onSendQueuedPrompt: () => {
         if (recordRef.current) this.callbacks.onRecordChanged(recordRef.current);
       },
+      onUsageLimitExceeded: (info) => {
+        if (recordRef.current) this.callbacks.onUsageLimitExceeded(recordRef.current, info);
+      },
     };
     const cell = new SessionCell({
       conversationId: input.conversationId,
@@ -308,6 +330,7 @@ export class SessionMaterializer {
       resolveAttachment: this.deps.resolveAttachment,
       logger: this.deps.logger,
       callbacks,
+      codexFailoverEligible,
     });
     const record: SessionRecord = {
       conversation,
@@ -326,6 +349,7 @@ export class SessionMaterializer {
         }),
       },
       disposed: false,
+      usingCodexFallbackHome,
     };
     recordRef.current = record;
     this.callbacks.onRecordCreated(record, scope);

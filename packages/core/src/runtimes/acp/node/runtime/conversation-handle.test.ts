@@ -343,6 +343,7 @@ function makeRecord(handle: ConversationHandle, epoch: number): SessionRecord {
     mcpServers: [],
     machineStateBinding: { dispose: () => {} },
     disposed: false,
+    usingCodexFallbackHome: false,
   };
 }
 

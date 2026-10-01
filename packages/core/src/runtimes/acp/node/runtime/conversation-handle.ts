@@ -2,6 +2,7 @@ import type { Lease, Result, Serializable } from '@emdash/shared';
 import { ok } from '@emdash/shared';
 import { createLifecycleCell, type LifecycleCell, type Scope } from '@emdash/shared/concurrency';
 import { runWithTimeout, type Clock } from '@emdash/shared/scheduling';
+import type { PromptInput } from '#runtimes/acp/api';
 import { acpErr } from '#runtimes/acp/api';
 import type { AgentTerminalManager } from '#runtimes/acp/node/agent-ports/terminal-manager';
 import type { SessionConfigCatalog } from '#runtimes/acp/node/session/cell';
@@ -375,6 +376,17 @@ export class ConversationHandle {
       ...this.descriptor,
       initialQueue: this.initialQueueConsumed ? undefined : this.descriptor.initialQueue,
     };
+  }
+
+  /**
+   * Replaces the descriptor's initial queue with `prompts` and marks it unconsumed, so the
+   * next materialization (a relaunch) seeds a fresh provider session with exactly these
+   * prompts. Used to fail over a conversation to a different env after a prompt failure.
+   */
+  requeueForFailover(prompts: readonly PromptInput[]): void {
+    if (!this.isCurrent()) return;
+    this.descriptor = { ...this.descriptor, initialQueue: [...prompts] };
+    this.initialQueueConsumed = false;
   }
 
   markMaterialized(record: SessionRecord, initialQueueConsumed: boolean): void {

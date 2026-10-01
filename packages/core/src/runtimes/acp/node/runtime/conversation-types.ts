@@ -24,4 +24,7 @@ export interface SessionRecord {
   mcpServers: SessionMcpServer[];
   machineStateBinding: { dispose(): void };
   disposed: boolean;
+  /** True when this record's provider process was launched against the Codex fallback
+   * `CODEX_HOME` rather than the default one. */
+  usingCodexFallbackHome: boolean;
 }

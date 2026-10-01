@@ -43,6 +43,9 @@ export interface AcpRuntimeDeps {
     activationDrainTimeoutMs?: number;
   };
   logger: Logger;
+  /** Path to a secondary Codex home (logged in with an OpenAI API key) to fail over to
+   * when the default account hits its usage limit. Leave unset to disable the feature. */
+  codexFallbackHome?: string;
 }
 
 export interface SendPromptInput {

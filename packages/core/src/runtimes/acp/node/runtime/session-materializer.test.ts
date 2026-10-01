@@ -3,6 +3,7 @@ import { deferred } from '@emdash/shared/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { makeAcpHarness, makeStartInput } from '#runtimes/acp/node/acp-test-support';
 import type { AcpConnectionEntry, AcpConnectionSource } from '#runtimes/acp/node/connection/source';
+import { CodexFallbackState } from './codex-fallback-state';
 import type { ConversationHandle } from './conversation-handle';
 import type { ConfigOverrides, SessionRecord } from './conversation-types';
 import { SessionMaterializer, type SessionMaterializerCallbacks } from './session-materializer';
@@ -265,12 +266,14 @@ function materializerHarness(
         if (index >= 0) loading.splice(index, 1);
       };
     },
+    onUsageLimitExceeded: () => {},
   };
   const materializer = new SessionMaterializer(
     {
       agentHost: harness.deps.agentHost,
       resolveAttachment: harness.deps.resolveAttachment,
       logger: harness.deps.logger,
+      codexFallback: new CodexFallbackState(undefined),
     },
     connections,
     callbacks
