@@ -2,7 +2,7 @@
   "name": "@emdash/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Emdash Web — self-hosted web frontend for the Emdash agentic development environment",
+  "description": "Emdash Web \u2014 self-hosted web frontend for the Emdash agentic development environment",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
@@ -14,7 +14,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check .",
     "typecheck": "tsgo --noEmit -p tsconfig.server.json && tsgo --noEmit -p tsconfig.web.json",
-    "test": "vitest run --config vitest.config.ts && node --test scripts/*.test.mjs"
+    "test": "pnpm exec nx test @emdash/web"
   },
   "dependencies": {
     "@emdash/chat-ui": "workspace:*",
@@ -39,5 +39,16 @@
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.2.1",
     "vite": "^7.0.0"
+  },
+  "nx": {
+    "targets": {
+      "test": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "pnpm exec vitest run --config vitest.config.ts && node --test scripts/*.test.mjs",
+          "cwd": "apps/emdash-web"
+        }
+      }
+    }
   }
 }
