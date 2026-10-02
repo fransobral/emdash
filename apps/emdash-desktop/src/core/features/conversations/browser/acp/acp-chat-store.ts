@@ -20,7 +20,7 @@ import {
   type ComposerQueuedPrompt,
 } from '@emdash/ui/react/components';
 import { toast } from '@emdash/ui/react/primitives';
-import type { BlobSource } from '@emdash/wire/rpc';
+import { WireError, type BlobSource } from '@emdash/wire/rpc';
 import {
   action,
   comparer,
@@ -145,6 +145,7 @@ export class AcpChatStore {
   private _historyRefreshRequested = false;
   private _historyRefreshTask: Promise<void> | null = null;
   private _historyEpoch = 0;
+  private _bootstrapRetries = 0;
   private _disposed = false;
   private _attachmentRecovery: Scope | null = null;
   private _attachedHostGeneration: number | undefined;
@@ -779,6 +780,7 @@ export class AcpChatStore {
         const applied = this.chatState.transcript.applyPage(history.data);
         if (applied) this.historyKnown = true;
         this.historyLoading = false;
+        this._bootstrapRetries = 0;
         this.loadError = null;
         this._bootstrapFailed = false;
         this._syncMessageCount();
@@ -789,6 +791,19 @@ export class AcpChatStore {
     } catch (error) {
       if (this._disposed || this._historyEpoch !== epoch) {
         if (clientSession && this.session !== clientSession) clientSession.dispose();
+        return;
+      }
+      if (isTransientLoadError(error) && this._bootstrapRetries < BOOTSTRAP_RETRY_LIMIT) {
+        // A phone waking up often hits a half-dead socket: the attach times out
+        // before the heartbeat recycles it. Retry quietly instead of showing an error.
+        if (clientSession && this.session !== clientSession) clientSession.dispose();
+        const delayMs = 1_000 * 2 ** this._bootstrapRetries++;
+        void systemClock
+          .sleep(delayMs, { signal: this._scope.signal })
+          .then(() => {
+            if (!this._disposed && this._historyEpoch === epoch) void this._runBootstrap();
+          })
+          .catch(() => {});
         return;
       }
       log.error('ACP chat bootstrap failed', {
@@ -1293,6 +1308,14 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
   }
   return btoa(binary);
+}
+
+const BOOTSTRAP_RETRY_LIMIT = 3;
+
+/** Timeouts and dropped connections, which a later attempt usually gets past. */
+export function isTransientLoadError(error: unknown): boolean {
+  if (error instanceof WireError) return error.code === 'TIMEOUT' || error.code === 'DISCONNECTED';
+  return error instanceof Error && error.message.startsWith('Timed out');
 }
 
 function toLoadError(error: unknown): AcpLoadError {
