@@ -3,9 +3,8 @@ import { RelativeTime, Tooltip } from '@emdash/ui/react/primitives';
 import { observer } from 'mobx-react-lite';
 import { taskAgentStatus } from '@core/features/conversations/api/browser/conversation-selectors';
 import { type TaskStore } from '@core/features/tasks/api/browser/stores/task-store';
-import { getSidebarStore } from '@core/features/workbench/contributions/browser/app-stores';
 import { useDelayedBoolean } from '@core/primitives/react-hooks/browser/use-delay-boolean';
-import { getSortInstant, sortKindFor } from './sidebar-store';
+import { getSortInstant } from './sidebar-store';
 
 /**
  * Sidebar trailing slot: spinner while bootstrapping, the live agent status
@@ -54,7 +53,9 @@ export const TaskSidebarTrailingSlot = observer(function TaskSidebarTrailingSlot
 
   if (!showTimestamp) return null;
 
-  const instant = getSortInstant(task, sortKindFor(getSidebarStore().taskSortBy));
+  // Always the last activity, whatever the sort order: under "created" sorting this
+  // showed the creation date, so a task chatted with today read "3d".
+  const instant = getSortInstant(task, 'updated');
   if (!instant) return null;
 
   return (
