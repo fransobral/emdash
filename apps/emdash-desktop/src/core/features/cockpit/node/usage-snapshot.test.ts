@@ -1,23 +1,56 @@
 import type { ClaudeUsageScan, CodexUsageScan } from '@emdash/core/services/usage/node';
 import { describe, expect, it } from 'vitest';
-import { buildUsageSnapshot } from './usage-snapshot';
+import { buildUsageSnapshot, type UsageAccountScan } from './usage-snapshot';
 
 const NOW = new Date('2026-10-02T12:00:00.000Z').getTime();
 const TODAY_9AM = new Date('2026-10-02T09:00:00.000Z').getTime();
 const YESTERDAY_9AM = new Date('2026-10-01T09:00:00.000Z').getTime();
 
+function claudeAccount(
+  scan: ClaudeUsageScan | null,
+  overrides: Partial<UsageAccountScan<ClaudeUsageScan>> = {}
+): UsageAccountScan<ClaudeUsageScan> {
+  return { accountId: 'default', label: 'Claude', isDefault: true, scan, ...overrides };
+}
+
+function codexAccount(
+  scan: CodexUsageScan | null,
+  overrides: Partial<UsageAccountScan<CodexUsageScan>> = {}
+): UsageAccountScan<CodexUsageScan> {
+  return { accountId: 'default', label: 'Codex', isDefault: true, scan, ...overrides };
+}
+
 describe('buildUsageSnapshot', () => {
-  it('reports unavailable when neither provider directory was scanned', () => {
-    const snapshot = buildUsageSnapshot({ claude: null, codex: null, now: NOW });
+  it('reports unavailable when no accounts are linked at all', () => {
+    const snapshot = buildUsageSnapshot({ claude: [], codex: [], now: NOW });
     expect(snapshot.availability).toBe('unavailable');
     expect(snapshot.providers).toEqual([]);
     expect(snapshot.sessionsToday).toEqual([]);
   });
 
-  it('reports partial when only one provider was scanned', () => {
+  it('reports unavailable when accounts are linked but none of them scanned', () => {
+    const snapshot = buildUsageSnapshot({ claude: [claudeAccount(null)], codex: [], now: NOW });
+    expect(snapshot.availability).toBe('unavailable');
+    // Still shown in the dashboard, "no disponible" per item, never hidden.
+    expect(snapshot.providers).toEqual([
+      { providerId: 'claude', accounts: [expect.objectContaining({ accountId: 'default' })] },
+    ]);
+  });
+
+  it('reports partial when only some linked accounts scanned successfully', () => {
     const claude: ClaudeUsageScan = { sessions: [] };
-    const snapshot = buildUsageSnapshot({ claude, codex: null, now: NOW });
+    const snapshot = buildUsageSnapshot({
+      claude: [claudeAccount(claude)],
+      codex: [codexAccount(null)],
+      now: NOW,
+    });
     expect(snapshot.availability).toBe('partial');
+  });
+
+  it('reports exact when every linked account scanned successfully', () => {
+    const claude: ClaudeUsageScan = { sessions: [] };
+    const snapshot = buildUsageSnapshot({ claude: [claudeAccount(claude)], codex: [], now: NOW });
+    expect(snapshot.availability).toBe('exact');
   });
 
   it('builds an exact Claude account from a cost-state-backed session, today only', () => {
@@ -56,7 +89,7 @@ describe('buildUsageSnapshot', () => {
       ],
     };
 
-    const snapshot = buildUsageSnapshot({ claude, codex: null, now: NOW });
+    const snapshot = buildUsageSnapshot({ claude: [claudeAccount(claude)], codex: [], now: NOW });
     const claudeProvider = snapshot.providers.find((p) => p.providerId === 'claude');
     expect(claudeProvider?.accounts).toHaveLength(1);
     const account = claudeProvider?.accounts[0];
@@ -125,7 +158,7 @@ describe('buildUsageSnapshot', () => {
       ],
     };
 
-    const snapshot = buildUsageSnapshot({ claude, codex: null, now: NOW });
+    const snapshot = buildUsageSnapshot({ claude: [claudeAccount(claude)], codex: [], now: NOW });
     const account = snapshot.providers[0].accounts[0];
     expect(account.modelsToday).toEqual([
       {
@@ -165,7 +198,7 @@ describe('buildUsageSnapshot', () => {
       },
     };
 
-    const snapshot = buildUsageSnapshot({ claude: null, codex, now: NOW });
+    const snapshot = buildUsageSnapshot({ claude: [], codex: [codexAccount(codex)], now: NOW });
     const account = snapshot.providers[0].accounts[0];
     expect(account.rateLimits).toEqual({
       source: 'exact',
@@ -197,7 +230,7 @@ describe('buildUsageSnapshot', () => {
       latestRateLimits: null,
     };
 
-    const snapshot = buildUsageSnapshot({ claude: null, codex, now: NOW });
+    const snapshot = buildUsageSnapshot({ claude: [], codex: [codexAccount(codex)], now: NOW });
     const account = snapshot.providers[0].accounts[0];
     expect(account.costTodayUsd).toBeNull();
     expect(account.costSource).toBe('unavailable');
@@ -232,7 +265,24 @@ describe('buildUsageSnapshot', () => {
         },
       ],
     };
-    const snapshot = buildUsageSnapshot({ claude, codex: null, now: NOW });
+    const snapshot = buildUsageSnapshot({ claude: [claudeAccount(claude)], codex: [], now: NOW });
     expect(snapshot.sessionsToday.map((s) => s.sessionId)).toEqual(['newer', 'older']);
+  });
+
+  it('keeps multiple accounts per provider distinct, each with its own label', () => {
+    const scanA: ClaudeUsageScan = { sessions: [] };
+    const scanB: ClaudeUsageScan = { sessions: [] };
+    const snapshot = buildUsageSnapshot({
+      claude: [
+        claudeAccount(scanA, { accountId: 'default', label: 'Claude', isDefault: true }),
+        claudeAccount(scanB, { accountId: 'work', label: 'Claude (work)', isDefault: false }),
+      ],
+      codex: [],
+      now: NOW,
+    });
+    expect(snapshot.providers[0].accounts).toEqual([
+      expect.objectContaining({ accountId: 'default', label: 'Claude', isDefault: true }),
+      expect.objectContaining({ accountId: 'work', label: 'Claude (work)', isDefault: false }),
+    ]);
   });
 });

@@ -1,4 +1,4 @@
-import { defineContract, procedure } from '@emdash/wire/rpc';
+import { defineContract, fallible, procedure } from '@emdash/wire/rpc';
 import { z } from 'zod';
 
 /**
@@ -86,6 +86,47 @@ export const usageSnapshotSchema = z.object({
 });
 export type UsageSnapshot = z.infer<typeof usageSnapshotSchema>;
 
+// ---------------------------------------------------------------------------
+// Account linking (Phase 1): emdash never performs the OAuth/login flow
+// itself. Linking an account means pointing emdash at a CLI config
+// directory (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`) that the user logs into
+// with the provider's own CLI; emdash only remembers the directory + label
+// and reports whether a credential file has shown up in it yet.
+// ---------------------------------------------------------------------------
+
+export const usageAccountCredentialStatusSchema = z.enum(['linked', 'missing']);
+export type UsageAccountCredentialStatus = z.infer<typeof usageAccountCredentialStatusSchema>;
+
+export const usageLinkedAccountSchema = z.object({
+  providerId: usageProviderIdSchema,
+  accountId: z.string(),
+  label: z.string(),
+  configDirPath: z.string(),
+  isDefault: z.boolean(),
+  credentialStatus: usageAccountCredentialStatusSchema,
+});
+export type UsageLinkedAccount = z.infer<typeof usageLinkedAccountSchema>;
+
+export const usageAccountErrorSchema = z.object({ message: z.string() });
+export type UsageAccountError = z.infer<typeof usageAccountErrorSchema>;
+
+export const addUsageAccountInputSchema = z.object({
+  providerId: usageProviderIdSchema,
+  label: z.string().min(1),
+  configDirPath: z.string().min(1),
+});
+
+export const renameUsageAccountInputSchema = z.object({
+  providerId: usageProviderIdSchema,
+  accountId: z.string(),
+  label: z.string().min(1),
+});
+
+export const removeUsageAccountInputSchema = z.object({
+  providerId: usageProviderIdSchema,
+  accountId: z.string(),
+});
+
 export const cockpitDomain = 'cockpit' as const;
 
 export const cockpitContract = defineContract({
@@ -98,6 +139,26 @@ export const cockpitContract = defineContract({
   usageSnapshot: procedure({
     input: z.void(),
     output: usageSnapshotSchema,
+  }),
+  /** Every linked Claude/Codex account, with a freshly-checked credential status. */
+  linkedAccounts: procedure({
+    input: z.void(),
+    output: z.array(usageLinkedAccountSchema),
+  }),
+  addUsageAccount: fallible({
+    input: addUsageAccountInputSchema,
+    data: usageLinkedAccountSchema,
+    error: usageAccountErrorSchema,
+  }),
+  renameUsageAccount: fallible({
+    input: renameUsageAccountInputSchema,
+    data: usageLinkedAccountSchema,
+    error: usageAccountErrorSchema,
+  }),
+  removeUsageAccount: fallible({
+    input: removeUsageAccountInputSchema,
+    data: z.object({ removed: z.boolean() }),
+    error: usageAccountErrorSchema,
   }),
 });
 

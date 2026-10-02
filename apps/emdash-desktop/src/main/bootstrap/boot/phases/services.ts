@@ -99,6 +99,7 @@ import { DEFAULT_AGENT_GIT_CREDENTIALS } from '@core/primitives/project-settings
 import type { HostReachabilityProbe } from '@core/primitives/ssh/api';
 import { AppDbKeyValueStore } from '@core/services/app-db/node/key-value-store';
 import { createNotificationService } from '@core/services/notifications/node';
+import type { ProviderAccountStore } from '@core/services/provider-accounts/api/provider-account-store';
 import { LegacyAccountImports } from '@core/services/provider-accounts/node/migrations/legacy-account-imports';
 import { listProviderAccountSummaries } from '@core/services/provider-accounts/node/provider-account-service';
 import {
@@ -173,6 +174,8 @@ export type ServicesBundle = {
   readonly notifications: ReturnType<typeof createNotificationService>;
   readonly previewServerAccess: PreviewServerAccessService;
   readonly promptLibrary: ReturnType<typeof createPromptLibraryService>;
+  /** The raw account registry (not the integrations-specific `ProviderAccountService` wrapper). */
+  readonly providerAccountStore: ProviderAccountStore;
   readonly projectDeletion: ProjectDeletionDependencies;
   readonly projects: ProjectAttachmentManager;
   readonly projectSettings: ProjectSettingsService;
@@ -845,6 +848,7 @@ export async function bootServices(
     notifications: notificationService,
     previewServerAccess,
     promptLibrary: promptLibraryService,
+    providerAccountStore: providerAccountRegistry,
     projectDeletion,
     projects: projectManager,
     projectSettings: projectSettingsService,

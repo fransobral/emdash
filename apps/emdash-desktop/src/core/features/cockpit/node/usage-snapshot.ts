@@ -16,13 +16,17 @@ import type {
   UsageValueSource,
 } from '../api/contract';
 
-/** Phase 0 ships a single, unlabeled account per provider: the default config dir. */
-const DEFAULT_ACCOUNT_ID = 'default';
+/** One linked account's scan result; `scan` is `null` when its config dir was never read. */
+export type UsageAccountScan<TScan> = Readonly<{
+  accountId: string;
+  label: string;
+  isDefault: boolean;
+  scan: TScan | null;
+}>;
 
 export type UsageSnapshotInput = Readonly<{
-  /** `null` means `CLAUDE_CONFIG_DIR` was never scanned (e.g. provider not detected). */
-  claude: ClaudeUsageScan | null;
-  codex: CodexUsageScan | null;
+  claude: readonly UsageAccountScan<ClaudeUsageScan>[];
+  codex: readonly UsageAccountScan<CodexUsageScan>[];
   now: number;
 }>;
 
@@ -32,25 +36,29 @@ export function buildUsageSnapshot(input: UsageSnapshotInput): UsageSnapshot {
   const providers: UsageProvider[] = [];
   const sessionsToday: UsageSessionRow[] = [];
 
-  if (input.claude) {
-    const todaySessions = input.claude.sessions.filter((s) => isActiveToday(s, startOfDay));
+  if (input.claude.length > 0) {
     providers.push({
       providerId: 'claude',
-      accounts: [buildClaudeAccount(todaySessions)],
+      accounts: input.claude.map((account) => buildClaudeAccount(account, startOfDay)),
     });
-    for (const session of todaySessions) {
-      sessionsToday.push(claudeSessionRow(session));
+    for (const account of input.claude) {
+      if (!account.scan) continue;
+      for (const session of account.scan.sessions.filter((s) => isActiveToday(s, startOfDay))) {
+        sessionsToday.push(claudeSessionRow(session, account));
+      }
     }
   }
 
-  if (input.codex) {
-    const todaySessions = input.codex.sessions.filter((s) => isActiveToday(s, startOfDay));
+  if (input.codex.length > 0) {
     providers.push({
       providerId: 'codex',
-      accounts: [buildCodexAccount(todaySessions, input.codex.latestRateLimits)],
+      accounts: input.codex.map((account) => buildCodexAccount(account, startOfDay)),
     });
-    for (const session of todaySessions) {
-      sessionsToday.push(codexSessionRow(session));
+    for (const account of input.codex) {
+      if (!account.scan) continue;
+      for (const session of account.scan.sessions.filter((s) => isActiveToday(s, startOfDay))) {
+        sessionsToday.push(codexSessionRow(session, account));
+      }
     }
   }
 
@@ -65,9 +73,12 @@ export function buildUsageSnapshot(input: UsageSnapshotInput): UsageSnapshot {
 }
 
 function resolveAvailability(input: UsageSnapshotInput): UsageSnapshot['availability'] {
-  if (input.claude === null && input.codex === null) return 'unavailable';
-  if (input.claude === null || input.codex === null) return 'partial';
-  return 'exact';
+  const accounts = [...input.claude, ...input.codex];
+  if (accounts.length === 0) return 'unavailable';
+  const scanned = accounts.filter((a) => a.scan !== null).length;
+  if (scanned === 0) return 'unavailable';
+  if (scanned === accounts.length) return 'exact';
+  return 'partial';
 }
 
 export function startOfLocalDay(now: number): number {
@@ -83,13 +94,25 @@ function isActiveToday(
   return activity !== null && activity >= startOfDay;
 }
 
+const UNAVAILABLE_RATE_LIMITS: UsageRateLimits = {
+  source: 'unavailable',
+  fiveHour: null,
+  weekly: null,
+};
+
 // ---------------------------------------------------------------------------
 // Claude
 // ---------------------------------------------------------------------------
 
-function buildClaudeAccount(sessions: readonly ClaudeSessionUsage[]): UsageAccount {
+function buildClaudeAccount(
+  account: UsageAccountScan<ClaudeUsageScan>,
+  startOfDay: number
+): UsageAccount {
+  if (!account.scan) return emptyAccount(account);
+
+  const todaySessions = account.scan.sessions.filter((s) => isActiveToday(s, startOfDay));
   const modelsToday = mergeModelBreakdowns(
-    sessions.flatMap((session) =>
+    todaySessions.flatMap((session) =>
       session.models.map((model) => ({
         model: model.model,
         inputTokens: model.inputTokens,
@@ -103,19 +126,22 @@ function buildClaudeAccount(sessions: readonly ClaudeSessionUsage[]): UsageAccou
   const { costUsd, costSource } = totalCost(modelsToday);
 
   return {
-    accountId: DEFAULT_ACCOUNT_ID,
-    label: 'Claude',
-    isDefault: true,
+    accountId: account.accountId,
+    label: account.label,
+    isDefault: account.isDefault,
     // Local jsonl scanning never surfaces a rate-limit percentage; that
     // requires the opt-in OAuth usage endpoint (a later phase).
-    rateLimits: { source: 'unavailable', fiveHour: null, weekly: null },
+    rateLimits: UNAVAILABLE_RATE_LIMITS,
     modelsToday,
     costTodayUsd: costUsd,
     costSource,
   };
 }
 
-function claudeSessionRow(session: ClaudeSessionUsage): UsageSessionRow {
+function claudeSessionRow(
+  session: ClaudeSessionUsage,
+  account: UsageAccountScan<ClaudeUsageScan>
+): UsageSessionRow {
   const inputTokens = sum(session.models, (m) => m.inputTokens);
   const outputTokens = sum(session.models, (m) => m.outputTokens);
   const cacheTokens = sum(
@@ -124,8 +150,8 @@ function claudeSessionRow(session: ClaudeSessionUsage): UsageSessionRow {
   );
   return {
     provider: 'claude',
-    accountId: DEFAULT_ACCOUNT_ID,
-    accountLabel: 'Claude',
+    accountId: account.accountId,
+    accountLabel: account.label,
     sessionId: session.sessionId,
     // A session can use more than one model; the busiest one represents the row.
     model: busiestModel(session.models)?.model ?? null,
@@ -156,11 +182,14 @@ function busiestModel(
 // ---------------------------------------------------------------------------
 
 function buildCodexAccount(
-  sessions: readonly CodexSessionUsage[],
-  latestRateLimits: CodexRateLimits | null
+  account: UsageAccountScan<CodexUsageScan>,
+  startOfDay: number
 ): UsageAccount {
+  if (!account.scan) return emptyAccount(account);
+
+  const todaySessions = account.scan.sessions.filter((s) => isActiveToday(s, startOfDay));
   const modelsToday = mergeModelBreakdowns(
-    sessions.flatMap((session) => {
+    todaySessions.flatMap((session) => {
       if (!session.tokens || !session.model) return [];
       const cacheTokens = session.tokens.cachedInputTokens;
       const costUsd = estimateCostUsd(session.model, {
@@ -182,10 +211,10 @@ function buildCodexAccount(
   const { costUsd, costSource } = totalCost(modelsToday);
 
   return {
-    accountId: DEFAULT_ACCOUNT_ID,
-    label: 'Codex',
-    isDefault: true,
-    rateLimits: toUsageRateLimits(latestRateLimits),
+    accountId: account.accountId,
+    label: account.label,
+    isDefault: account.isDefault,
+    rateLimits: toUsageRateLimits(account.scan.latestRateLimits),
     modelsToday,
     costTodayUsd: costUsd,
     costSource,
@@ -193,7 +222,7 @@ function buildCodexAccount(
 }
 
 function toUsageRateLimits(rateLimits: CodexRateLimits | null): UsageRateLimits {
-  if (!rateLimits) return { source: 'unavailable', fiveHour: null, weekly: null };
+  if (!rateLimits) return UNAVAILABLE_RATE_LIMITS;
   return {
     source: 'exact',
     fiveHour: rateLimits.fiveHour
@@ -205,7 +234,10 @@ function toUsageRateLimits(rateLimits: CodexRateLimits | null): UsageRateLimits 
   };
 }
 
-function codexSessionRow(session: CodexSessionUsage): UsageSessionRow {
+function codexSessionRow(
+  session: CodexSessionUsage,
+  account: UsageAccountScan<CodexUsageScan>
+): UsageSessionRow {
   const tokens = session.tokens;
   const costUsd =
     tokens && session.model
@@ -216,8 +248,8 @@ function codexSessionRow(session: CodexSessionUsage): UsageSessionRow {
       : null;
   return {
     provider: 'codex',
-    accountId: DEFAULT_ACCOUNT_ID,
-    accountLabel: 'Codex',
+    accountId: account.accountId,
+    accountLabel: account.label,
     sessionId: session.sessionId,
     model: session.model,
     cwd: session.cwd,
@@ -234,6 +266,19 @@ function codexSessionRow(session: CodexSessionUsage): UsageSessionRow {
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
+
+/** An account whose config dir was never scanned: "no disponible" per item, never hidden. */
+function emptyAccount(account: UsageAccountScan<unknown>): UsageAccount {
+  return {
+    accountId: account.accountId,
+    label: account.label,
+    isDefault: account.isDefault,
+    rateLimits: UNAVAILABLE_RATE_LIMITS,
+    modelsToday: [],
+    costTodayUsd: null,
+    costSource: 'unavailable',
+  };
+}
 
 function mergeModelBreakdowns(entries: readonly UsageModelBreakdown[]): UsageModelBreakdown[] {
   const byModel = new Map<string, UsageModelBreakdown>();

@@ -102,6 +102,7 @@ import {
 } from '@core/services/logging/node/wire-controller';
 import type { NotificationService } from '@core/services/notifications/node';
 import { createNotificationsWireController } from '@core/services/notifications/node/wire-controller';
+import type { ProviderAccountStore } from '@core/services/provider-accounts/api/provider-account-store';
 import type { PullRequestsRuntimeClient } from '@core/services/pull-requests/api';
 import type { ReconcileSweepHandle } from '@core/services/reconcile-sweep/node/reconcile-sweep-service';
 import type { MementosRuntimeClient } from '@core/services/runtime-broker/api/clients';
@@ -141,6 +142,7 @@ export type DesktopControllerContext = {
   readonly promptLibrary: PromptLibraryService;
   readonly projects: ProjectAttachmentManager;
   readonly projectSettings: ProjectSettingsService;
+  readonly providerAccountStore: ProviderAccountStore;
   readonly providerSettings: ProviderOverrideSettings;
   readonly reconcileSweep: ReconcileSweepHandle;
   readonly hosts: Hosts;
@@ -264,7 +266,8 @@ export const desktopNodeControllers = {
     create: ({ runtimes }) => createMcpWireController({ runtimes }),
   },
   cockpit: {
-    create: ({ logger }) => createCockpitWireController(logger),
+    create: ({ logger, providerAccountStore }) =>
+      createCockpitWireController(logger, providerAccountStore),
   },
   skills: {
     create: ({ runtimes }) => createSkillsWireController({ runtimes }),

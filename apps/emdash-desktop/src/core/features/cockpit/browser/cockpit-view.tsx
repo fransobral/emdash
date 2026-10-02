@@ -17,6 +17,7 @@ import { registeredTaskData } from '@core/primitives/task-state/browser/task-sta
 import { defineViewRuntime } from '@core/primitives/views/react';
 import { ActiveAgentsList } from './active-agents-list';
 import { buildTodayDashboard, type TodayAgent, type TodayProjectInput } from './cockpit-model';
+import { UsageAccountsSection } from './usage-accounts-section';
 import { createUsagePoller } from './usage-poller';
 import { UsageSection, usageCriticalWarnings } from './usage-section';
 
@@ -156,6 +157,8 @@ export const CockpitMainPanel = observer(function CockpitMainPanel() {
         </section>
 
         <UsageSection usage={dashboard.usage} />
+
+        <UsageAccountsSection />
 
         {projects.length === 0 ? (
           <EmptyState

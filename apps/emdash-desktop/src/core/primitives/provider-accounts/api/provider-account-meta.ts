@@ -33,6 +33,13 @@ const v1Schema = z.object({
   identityScope: z.string().optional(),
   /** How the credential was obtained, e.g. 'form' | 'oauth' | 'device_flow' | 'cli'. */
   credentialSource: z.string().optional(),
+  /**
+   * Local directory emdash reads this account's CLI state from (e.g. a
+   * `CLAUDE_CONFIG_DIR` or `CODEX_HOME` value). Used by accounts that are
+   * pointers to a CLI-managed config directory rather than an emdash-held
+   * secret; the credential itself always stays on disk under this path.
+   */
+  configDirPath: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
