@@ -5,7 +5,6 @@ import { labelBase } from '../label/label.css';
 import { vars } from '@theme/core/contract/contract.css';
 import { tokenVars } from '@theme/tokens.css';
 
-
 /** Phone widths, matching the page layout breakpoint. */
 const PHONE_MEDIA = 'screen and (max-width: 767px)';
 

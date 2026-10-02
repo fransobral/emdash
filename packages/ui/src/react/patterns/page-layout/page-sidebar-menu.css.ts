@@ -1,9 +1,9 @@
 import { style } from '@vanilla-extract/css';
 import { recipe } from '@vanilla-extract/recipes';
 import type { RecipeVariants } from '@vanilla-extract/recipes';
+import { MOBILE_MEDIA } from './page-layout.css';
 import { vars } from '@theme/core/contract/contract.css';
 import { tokenVars } from '@theme/tokens.css';
-import { MOBILE_MEDIA } from './page-layout.css';
 
 type CSSExtra = { [key: string]: string };
 

@@ -18,9 +18,20 @@ const ws = new WebSocket(url, {
 ws.binaryType = 'nodebuffer';
 const dataListeners = new Set();
 const closeListeners = new Set();
-ws.on('message', (chunk) => { for (const l of dataListeners) l(chunk); });
-ws.on('close', (code, reason) => { console.error(`ws closed ${code} ${reason}`); for (const l of closeListeners) l(); });
-const input = { on(event, cb) { if (event === 'data') dataListeners.add(cb); else closeListeners.add(cb); return this; } };
+ws.on('message', (chunk) => {
+  for (const l of dataListeners) l(chunk);
+});
+ws.on('close', (code, reason) => {
+  console.error(`ws closed ${code} ${reason}`);
+  for (const l of closeListeners) l();
+});
+const input = {
+  on(event, cb) {
+    if (event === 'data') dataListeners.add(cb);
+    else closeListeners.add(cb);
+    return this;
+  },
+};
 const output = { write: (chunk) => ws.send(chunk) };
 
 await new Promise((resolve, reject) => {
