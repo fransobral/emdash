@@ -123,7 +123,7 @@ describe('buildTodayDashboard', () => {
               accountId: 'default',
               label: 'Claude',
               isDefault: true,
-              rateLimits: { source: 'unavailable', fiveHour: null, weekly: null },
+              rateLimits: { source: 'unavailable', fiveHour: null, weekly: null, stale: false },
               modelsToday: [],
               costTodayUsd: null,
               costSource: 'unavailable',

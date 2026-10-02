@@ -105,7 +105,12 @@ describe('buildUsageSnapshot', () => {
         costSource: 'exact',
       },
     ]);
-    expect(account?.rateLimits).toEqual({ source: 'unavailable', fiveHour: null, weekly: null });
+    expect(account?.rateLimits).toEqual({
+      source: 'unavailable',
+      fiveHour: null,
+      weekly: null,
+      stale: false,
+    });
 
     // Only the session active today shows up in the sessions table.
     expect(snapshot.sessionsToday).toHaveLength(1);
@@ -204,6 +209,7 @@ describe('buildUsageSnapshot', () => {
       source: 'exact',
       fiveHour: { usedPercent: 10, resetsAt: 123000 },
       weekly: { usedPercent: 50, resetsAt: 456000 },
+      stale: false,
     });
     expect(account.costSource).toBe('estimated');
     expect(account.costTodayUsd).toBeCloseTo(1, 5);
@@ -234,7 +240,12 @@ describe('buildUsageSnapshot', () => {
     const account = snapshot.providers[0].accounts[0];
     expect(account.costTodayUsd).toBeNull();
     expect(account.costSource).toBe('unavailable');
-    expect(account.rateLimits).toEqual({ source: 'unavailable', fiveHour: null, weekly: null });
+    expect(account.rateLimits).toEqual({
+      source: 'unavailable',
+      fiveHour: null,
+      weekly: null,
+      stale: false,
+    });
     // Tokens still show up even though cost is unavailable.
     expect(snapshot.sessionsToday[0].inputTokens).toBe(500);
     expect(snapshot.sessionsToday[0].costSource).toBe('unavailable');
@@ -284,5 +295,72 @@ describe('buildUsageSnapshot', () => {
       expect.objectContaining({ accountId: 'default', label: 'Claude', isDefault: true }),
       expect.objectContaining({ accountId: 'work', label: 'Claude (work)', isDefault: false }),
     ]);
+  });
+
+  it("uses the opt-in OAuth usage snapshot for a Claude account's rate limits when present", () => {
+    const claude: ClaudeUsageScan = { sessions: [] };
+    const snapshot = buildUsageSnapshot({
+      claude: [claudeAccount(claude)],
+      codex: [],
+      claudeOauthUsage: new Map([
+        [
+          'default',
+          {
+            fiveHour: { usedPercent: 62, resetsAt: 123000 },
+            weekly: { usedPercent: 41, resetsAt: null },
+            fetchedAt: NOW,
+            stale: false,
+          },
+        ],
+      ]),
+      now: NOW,
+    });
+    const account = snapshot.providers[0].accounts[0];
+    expect(account.rateLimits).toEqual({
+      source: 'exact',
+      fiveHour: { usedPercent: 62, resetsAt: 123000 },
+      weekly: { usedPercent: 41, resetsAt: null },
+      stale: false,
+    });
+  });
+
+  it("marks a Claude account's OAuth-sourced rate limits stale without discarding them", () => {
+    const claude: ClaudeUsageScan = { sessions: [] };
+    const snapshot = buildUsageSnapshot({
+      claude: [claudeAccount(claude)],
+      codex: [],
+      claudeOauthUsage: new Map([
+        [
+          'default',
+          {
+            fiveHour: { usedPercent: 96, resetsAt: null },
+            weekly: null,
+            fetchedAt: NOW - 600_000,
+            stale: true,
+          },
+        ],
+      ]),
+      now: NOW,
+    });
+    const account = snapshot.providers[0].accounts[0];
+    expect(account.rateLimits.stale).toBe(true);
+    expect(account.rateLimits.fiveHour?.usedPercent).toBe(96);
+  });
+
+  it("leaves a Claude account's rate limits unavailable when it never opted into OAuth usage", () => {
+    const claude: ClaudeUsageScan = { sessions: [] };
+    const snapshot = buildUsageSnapshot({
+      claude: [claudeAccount(claude)],
+      codex: [],
+      claudeOauthUsage: new Map(),
+      now: NOW,
+    });
+    const account = snapshot.providers[0].accounts[0];
+    expect(account.rateLimits).toEqual({
+      source: 'unavailable',
+      fiveHour: null,
+      weekly: null,
+      stale: false,
+    });
   });
 });

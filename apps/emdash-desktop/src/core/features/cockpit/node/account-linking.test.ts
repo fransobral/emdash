@@ -45,7 +45,16 @@ describe('toLinkedAccount', () => {
       configDirPath: '/x',
       isDefault: true,
       credentialStatus: 'linked',
+      oauthUsageEnabled: false,
     });
+  });
+
+  it('reports oauthUsageEnabled from meta, defaulting to false', () => {
+    expect(
+      toLinkedAccount(account({ meta: { version: '1', oauthUsageEnabled: true } }), () => false)
+        .oauthUsageEnabled
+    ).toBe(true);
+    expect(toLinkedAccount(account({ meta: null }), () => false).oauthUsageEnabled).toBe(false);
   });
 
   it('falls back to fallbackDisplayName, then the raw accountId, for the label', () => {

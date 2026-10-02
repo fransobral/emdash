@@ -40,6 +40,8 @@ export const usageRateLimitsSchema = z.object({
   source: usageValueSourceSchema,
   fiveHour: usageRateLimitWindowSchema.nullable(),
   weekly: usageRateLimitWindowSchema.nullable(),
+  /** True when these numbers are a cached last-known value, not a fresh read (e.g. Claude's opt-in OAuth endpoint backing off after a 429/5xx). */
+  stale: z.boolean(),
 });
 export type UsageRateLimits = z.infer<typeof usageRateLimitsSchema>;
 
@@ -104,6 +106,8 @@ export const usageLinkedAccountSchema = z.object({
   configDirPath: z.string(),
   isDefault: z.boolean(),
   credentialStatus: usageAccountCredentialStatusSchema,
+  /** Opt-in (default false), Claude-only: see `setUsageOauthEnabled`. */
+  oauthUsageEnabled: z.boolean(),
 });
 export type UsageLinkedAccount = z.infer<typeof usageLinkedAccountSchema>;
 
@@ -125,6 +129,12 @@ export const renameUsageAccountInputSchema = z.object({
 export const removeUsageAccountInputSchema = z.object({
   providerId: usageProviderIdSchema,
   accountId: z.string(),
+});
+
+export const setUsageOauthEnabledInputSchema = z.object({
+  providerId: usageProviderIdSchema,
+  accountId: z.string(),
+  enabled: z.boolean(),
 });
 
 export const cockpitDomain = 'cockpit' as const;
@@ -158,6 +168,16 @@ export const cockpitContract = defineContract({
   removeUsageAccount: fallible({
     input: removeUsageAccountInputSchema,
     data: z.object({ removed: z.boolean() }),
+    error: usageAccountErrorSchema,
+  }),
+  /**
+   * Toggles the opt-in Anthropic OAuth usage endpoint for one Claude
+   * account (default off; see `../node/claude-oauth-usage.ts`). Claude-only
+   * — fails for any other provider.
+   */
+  setUsageOauthEnabled: fallible({
+    input: setUsageOauthEnabledInputSchema,
+    data: usageLinkedAccountSchema,
     error: usageAccountErrorSchema,
   }),
 });

@@ -1,4 +1,5 @@
 import type {
+  ClaudeOAuthUsageSnapshot,
   ClaudeSessionUsage,
   ClaudeUsageScan,
   CodexRateLimits,
@@ -27,6 +28,8 @@ export type UsageAccountScan<TScan> = Readonly<{
 export type UsageSnapshotInput = Readonly<{
   claude: readonly UsageAccountScan<ClaudeUsageScan>[];
   codex: readonly UsageAccountScan<CodexUsageScan>[];
+  /** Opt-in OAuth-endpoint rate limits (Phase 2) for Claude accounts that enabled it, keyed by accountId. */
+  claudeOauthUsage?: ReadonlyMap<string, ClaudeOAuthUsageSnapshot>;
   now: number;
 }>;
 
@@ -39,7 +42,9 @@ export function buildUsageSnapshot(input: UsageSnapshotInput): UsageSnapshot {
   if (input.claude.length > 0) {
     providers.push({
       providerId: 'claude',
-      accounts: input.claude.map((account) => buildClaudeAccount(account, startOfDay)),
+      accounts: input.claude.map((account) =>
+        buildClaudeAccount(account, startOfDay, input.claudeOauthUsage?.get(account.accountId))
+      ),
     });
     for (const account of input.claude) {
       if (!account.scan) continue;
@@ -98,6 +103,7 @@ const UNAVAILABLE_RATE_LIMITS: UsageRateLimits = {
   source: 'unavailable',
   fiveHour: null,
   weekly: null,
+  stale: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -106,7 +112,8 @@ const UNAVAILABLE_RATE_LIMITS: UsageRateLimits = {
 
 function buildClaudeAccount(
   account: UsageAccountScan<ClaudeUsageScan>,
-  startOfDay: number
+  startOfDay: number,
+  oauthUsage: ClaudeOAuthUsageSnapshot | undefined
 ): UsageAccount {
   if (!account.scan) return emptyAccount(account);
 
@@ -129,12 +136,23 @@ function buildClaudeAccount(
     accountId: account.accountId,
     label: account.label,
     isDefault: account.isDefault,
-    // Local jsonl scanning never surfaces a rate-limit percentage; that
-    // requires the opt-in OAuth usage endpoint (a later phase).
-    rateLimits: UNAVAILABLE_RATE_LIMITS,
+    // Local jsonl scanning never surfaces a rate-limit percentage; this
+    // only has a value when the account opted into the Phase 2 OAuth
+    // usage endpoint and a fetch for it has ever succeeded.
+    rateLimits: toClaudeRateLimits(oauthUsage),
     modelsToday,
     costTodayUsd: costUsd,
     costSource,
+  };
+}
+
+function toClaudeRateLimits(oauthUsage: ClaudeOAuthUsageSnapshot | undefined): UsageRateLimits {
+  if (!oauthUsage) return UNAVAILABLE_RATE_LIMITS;
+  return {
+    source: 'exact',
+    fiveHour: oauthUsage.fiveHour,
+    weekly: oauthUsage.weekly,
+    stale: oauthUsage.stale,
   };
 }
 
@@ -231,6 +249,7 @@ function toUsageRateLimits(rateLimits: CodexRateLimits | null): UsageRateLimits 
     weekly: rateLimits.weekly
       ? { usedPercent: rateLimits.weekly.usedPercent, resetsAt: rateLimits.weekly.resetsAt }
       : null,
+    stale: false,
   };
 }
 

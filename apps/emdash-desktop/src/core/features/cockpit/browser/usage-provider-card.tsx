@@ -36,11 +36,13 @@ function UsageAccountCard({ account }: { account: UsageAccount }) {
         label="5h"
         usedPercent={account.rateLimits.fiveHour?.usedPercent ?? null}
         resetsAt={account.rateLimits.fiveHour?.resetsAt}
+        stale={account.rateLimits.stale}
       />
       <UsageLimitBar
         label="Semanal"
         usedPercent={account.rateLimits.weekly?.usedPercent ?? null}
         resetsAt={account.rateLimits.weekly?.resetsAt}
+        stale={account.rateLimits.stale}
       />
       <ModelsTodaySummary account={account} />
     </div>

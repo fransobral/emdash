@@ -40,6 +40,13 @@ const v1Schema = z.object({
    * secret; the credential itself always stays on disk under this path.
    */
   configDirPath: z.string().optional(),
+  /**
+   * Opt-in toggle (default off) for the Anthropic OAuth usage endpoint
+   * (Phase 2 of the usage dashboard): when true, the cockpit may read this
+   * account's own OAuth token from its `configDirPath` to fetch near-real-time
+   * 5h/weekly rate limits. Only meaningful for `claude` accounts.
+   */
+  oauthUsageEnabled: z.boolean().optional(),
 });
 
 // ---------------------------------------------------------------------------

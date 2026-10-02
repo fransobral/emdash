@@ -247,3 +247,50 @@ describe('createCockpitWireController account linking', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('createCockpitWireController setUsageOauthEnabled', () => {
+  it('toggles the opt-in OAuth usage setting for a Claude account', async () => {
+    const controller = createCockpitWireController(noopLogger, store);
+    const result = (await controller.call('setUsageOauthEnabled', {
+      providerId: 'claude',
+      accountId: 'default',
+      enabled: true,
+    })) as { success: boolean; data: { oauthUsageEnabled: boolean; configDirPath: string } };
+    expect(result.success).toBe(true);
+    expect(result.data.oauthUsageEnabled).toBe(true);
+    // Toggling the setting must not drop the account's config dir.
+    expect(result.data.configDirPath).toBe(claudeConfigDir);
+  });
+
+  it('rejects the setting for a non-Claude account', async () => {
+    const controller = createCockpitWireController(noopLogger, store);
+    const result = (await controller.call('setUsageOauthEnabled', {
+      providerId: 'codex',
+      accountId: 'default',
+      enabled: true,
+    })) as { success: boolean };
+    expect(result.success).toBe(false);
+  });
+
+  it('fails for an account that does not exist', async () => {
+    const controller = createCockpitWireController(noopLogger, store);
+    const result = (await controller.call('setUsageOauthEnabled', {
+      providerId: 'claude',
+      accountId: 'missing',
+      enabled: true,
+    })) as { success: boolean };
+    expect(result.success).toBe(false);
+  });
+
+  it('never calls the network: usageSnapshot leaves rate limits unavailable when OAuth usage is off', async () => {
+    const controller = createCockpitWireController(noopLogger, store);
+    const snapshot = usageSnapshotSchema.parse(await controller.call('usageSnapshot', undefined));
+    const claudeAccount = snapshot.providers.find((p) => p.providerId === 'claude')?.accounts[0];
+    expect(claudeAccount?.rateLimits).toEqual({
+      source: 'unavailable',
+      fiveHour: null,
+      weekly: null,
+      stale: false,
+    });
+  });
+});

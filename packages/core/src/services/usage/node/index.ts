@@ -5,6 +5,12 @@ export {
   type ClaudeUsageScan,
 } from './claude-usage-reader';
 export {
+  ClaudeOAuthUsageClient,
+  type ClaudeOAuthUsageSnapshot,
+  type ClaudeOAuthUsageWindow,
+} from './claude-oauth-usage-client';
+export { readClaudeOAuthAccessToken } from './claude-oauth-token';
+export {
   CodexUsageReader,
   type CodexRateLimits,
   type CodexRateLimitWindow,

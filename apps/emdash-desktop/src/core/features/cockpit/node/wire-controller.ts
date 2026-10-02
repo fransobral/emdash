@@ -6,10 +6,14 @@ import { ClaudeUsageReader, CodexUsageReader } from '@emdash/core/services/usage
 import { err, ok } from '@emdash/shared';
 import type { Logger } from '@emdash/shared/logger';
 import { createController, type Controller } from '@emdash/wire/rpc';
-import type { ProviderAccountStore } from '@core/services/provider-accounts/api/provider-account-store';
+import type {
+  ProviderAccount,
+  ProviderAccountStore,
+} from '@core/services/provider-accounts/api/provider-account-store';
 import { cockpitContract, type UsageProviderId } from '../api/contract';
 import { toLinkedAccount } from './account-linking';
 import { ensureSeededAccounts } from './account-seeding';
+import { resolveClaudeOauthUsage } from './claude-oauth-usage';
 import { buildUsageSnapshot, startOfLocalDay, type UsageAccountScan } from './usage-snapshot';
 
 type AnyUsageScan = ClaudeUsageScan | CodexUsageScan;
@@ -43,9 +47,9 @@ export function createCockpitWireController(
 
   async function scanAccounts<TScan extends AnyUsageScan>(
     providerId: UsageProviderId,
+    accounts: readonly ProviderAccount[],
     since: number
   ): Promise<UsageAccountScan<TScan>[]> {
-    const accounts = await accountStore.listAccounts(providerId);
     return Promise.all(
       accounts.map(async (account): Promise<UsageAccountScan<TScan>> => {
         const configDirPath = account.meta?.configDirPath ?? '';
@@ -66,11 +70,16 @@ export function createCockpitWireController(
       await seeded;
       const now = Date.now();
       const since = startOfLocalDay(now);
-      const [claude, codex] = await Promise.all([
-        scanAccounts<ClaudeUsageScan>('claude', since),
-        scanAccounts<CodexUsageScan>('codex', since),
+      const [claudeAccounts, codexAccounts] = await Promise.all([
+        accountStore.listAccounts('claude'),
+        accountStore.listAccounts('codex'),
       ]);
-      return buildUsageSnapshot({ claude, codex, now });
+      const [claude, codex, claudeOauthUsage] = await Promise.all([
+        scanAccounts<ClaudeUsageScan>('claude', claudeAccounts, since),
+        scanAccounts<CodexUsageScan>('codex', codexAccounts, since),
+        resolveClaudeOauthUsage(claudeAccounts, now),
+      ]);
+      return buildUsageSnapshot({ claude, codex, claudeOauthUsage, now });
     },
 
     linkedAccounts: async () => {
@@ -121,6 +130,26 @@ export function createCockpitWireController(
       } catch (error) {
         logger.error('cockpit: failed to remove usage account', { error });
         return err({ message: 'No pudimos quitar la cuenta.' });
+      }
+    },
+
+    setUsageOauthEnabled: async (input) => {
+      if (input.providerId !== 'claude') {
+        return err({ message: 'Esta opción solo está disponible para cuentas de Claude.' });
+      }
+      try {
+        const existing = await accountStore.getAccount(input.providerId, input.accountId);
+        if (!existing) return err({ message: 'No encontramos esa cuenta.' });
+        const { version: _version, ...meta } = existing.meta ?? {};
+        const result = await accountStore.upsertAccount({
+          providerId: input.providerId,
+          accountId: input.accountId,
+          meta: { ...meta, oauthUsageEnabled: input.enabled },
+        });
+        return ok(toLinkedAccount(result.account));
+      } catch (error) {
+        logger.error('cockpit: failed to update usage OAuth setting', { error });
+        return err({ message: 'No pudimos actualizar la configuración.' });
       }
     },
   });

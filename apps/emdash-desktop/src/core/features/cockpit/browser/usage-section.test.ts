@@ -14,7 +14,12 @@ function accountUsage(usedPercent: number, resetsAt: number | null = null): Dash
             accountId: 'default',
             label: 'Codex',
             isDefault: true,
-            rateLimits: { source: 'exact', fiveHour: { usedPercent, resetsAt }, weekly: null },
+            rateLimits: {
+              source: 'exact',
+              fiveHour: { usedPercent, resetsAt },
+              weekly: null,
+              stale: false,
+            },
             modelsToday: [],
             costTodayUsd: null,
             costSource: 'unavailable',

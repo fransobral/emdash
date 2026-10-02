@@ -1,4 +1,4 @@
-import { Badge, Button } from '@emdash/ui/react/primitives';
+import { Badge, Button, Switch } from '@emdash/ui/react/primitives';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useOpenModal } from '@core/manifests/browser/modal-api';
@@ -61,6 +61,19 @@ export function UsageAccountsSection() {
     void refresh();
   }
 
+  async function handleOauthUsageToggle(
+    account: UsageLinkedAccount,
+    enabled: boolean
+  ): Promise<void> {
+    const client = await getCockpitClient();
+    await client.setUsageOauthEnabled({
+      providerId: account.providerId,
+      accountId: account.accountId,
+      enabled,
+    });
+    void refresh();
+  }
+
   // First paint, before the initial fetch resolves: render nothing rather
   // than an empty-state flash that would immediately be replaced.
   if (accounts === null) return null;
@@ -112,6 +125,16 @@ export function UsageAccountsSection() {
                   <p className="truncate text-xs text-foreground-passive">
                     {account.configDirPath || 'Sin carpeta configurada'}
                   </p>
+                  {account.providerId === 'claude' && (
+                    <label className="mt-1 flex items-center gap-2 text-xs text-foreground-muted">
+                      <Switch
+                        size="sm"
+                        checked={account.oauthUsageEnabled}
+                        onCheckedChange={(enabled) => void handleOauthUsageToggle(account, enabled)}
+                      />
+                      Límites en vivo (beta, no oficial)
+                    </label>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {isRenaming ? (

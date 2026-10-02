@@ -38,5 +38,6 @@ export function toLinkedAccount(
     credentialStatus: hasLinkedCredential(providerId, configDirPath, fsExists)
       ? 'linked'
       : 'missing',
+    oauthUsageEnabled: account.meta?.oauthUsageEnabled ?? false,
   };
 }

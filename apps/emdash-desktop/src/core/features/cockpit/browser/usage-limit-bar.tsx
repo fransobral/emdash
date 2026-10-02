@@ -25,10 +25,13 @@ export function UsageLimitBar({
   label,
   usedPercent,
   resetsAt,
+  stale,
 }: {
   label: string;
   usedPercent: number | null;
   resetsAt?: number | null;
+  /** True when this value is a cached last-known read, not a fresh one (Claude's opt-in OAuth endpoint backing off). */
+  stale?: boolean;
 }) {
   if (usedPercent === null) {
     return (
@@ -49,6 +52,14 @@ export function UsageLimitBar({
         <span>{label}</span>
         <span className="flex items-center gap-1.5">
           {resetLabel ? <span>reinicia {resetLabel}</span> : null}
+          {stale && (
+            <span
+              title="Dato antiguo: no pudimos refrescarlo recién"
+              className="text-foreground-muted"
+            >
+              (desactualizado)
+            </span>
+          )}
           {tone !== 'success' && <Badge tone={tone}>{Math.round(clamped)}%</Badge>}
           {tone === 'success' && (
             <span className="text-foreground tabular-nums">{Math.round(clamped)}%</span>
