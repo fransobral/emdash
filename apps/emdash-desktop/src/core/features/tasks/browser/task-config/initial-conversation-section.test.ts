@@ -87,6 +87,10 @@ vi.mock('../context-bar/add-context-popover', () => ({
   AddContextPopover: () => null,
 }));
 
+vi.mock('@core/features/conversations/api/browser/discovered-models', () => ({
+  useNewChatModelOptions: () => null,
+}));
+
 vi.mock('@core/features/agents/api/browser/use-agents', () => ({
   useAgents: () => ({
     data: [

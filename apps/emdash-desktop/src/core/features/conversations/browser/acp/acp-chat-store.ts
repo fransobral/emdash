@@ -20,7 +20,7 @@ import {
   type ComposerQueuedPrompt,
 } from '@emdash/ui/react/components';
 import { toast } from '@emdash/ui/react/primitives';
-import { WireError, type BlobSource } from '@emdash/wire/rpc';
+import type { BlobSource } from '@emdash/wire/rpc';
 import {
   action,
   comparer,
@@ -65,6 +65,7 @@ import {
   AcpStartError,
   asValueSource,
 } from './acp-live-session';
+import { isTransientLoadError } from './acp-load-errors';
 import { bindSessionTerminalOutputs } from './acp-terminal-output-binding';
 
 export interface AgentAffordances {
@@ -1311,12 +1312,6 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 const BOOTSTRAP_RETRY_LIMIT = 3;
-
-/** Timeouts and dropped connections, which a later attempt usually gets past. */
-export function isTransientLoadError(error: unknown): boolean {
-  if (error instanceof WireError) return error.code === 'TIMEOUT' || error.code === 'DISCONNECTED';
-  return error instanceof Error && error.message.startsWith('Timed out');
-}
 
 function toLoadError(error: unknown): AcpLoadError {
   const message = error instanceof Error ? error.message : 'Failed to load chat.';
