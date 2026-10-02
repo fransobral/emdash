@@ -1,4 +1,5 @@
 import type { AgentStatus } from '@core/primitives/agents/api';
+import type { UsageSessionRow, UsageSnapshot } from '../api/contract';
 
 export type TodayConversationInput = Readonly<{
   id: string;
@@ -12,6 +13,8 @@ export type TodayTaskInput = Readonly<{
   name: string;
   status: string;
   lastInteractedAt?: string | null;
+  /** The task's worktree path, used to join local usage sessions by `cwd`. */
+  workspacePath?: string | null;
   conversations: readonly TodayConversationInput[];
 }>;
 
@@ -36,29 +39,59 @@ export type TodayTask = Omit<TodayTaskInput, 'conversations'> &
     timestamp: number;
   }>;
 
+/** A usage session row enriched with the emdash task it was run from, when one matches by cwd. */
+export type DashboardSessionRow = UsageSessionRow &
+  Readonly<{
+    taskId: string | null;
+    taskName: string | null;
+    taskStatus: string | null;
+  }>;
+
+export type DashboardUsage =
+  | { availability: 'unavailable' }
+  | {
+      availability: 'exact' | 'partial';
+      generatedAt: number;
+      providers: UsageSnapshot['providers'];
+      sessionsToday: DashboardSessionRow[];
+    };
+
 export type TodayDashboard = Readonly<{
   agents: { working: number; attention: number; error: number };
   activity: { completedTasks: number };
   activeAgents: TodayAgent[];
   recentTasks: TodayTask[];
   projects: Array<{ id: string; name: string; todayTasks: number; activeAgents: number }>;
-  usage: { availability: 'unavailable' };
+  usage: DashboardUsage;
 }>;
 
 export function buildTodayDashboard(
   projects: readonly TodayProjectInput[],
-  now = Date.now()
+  now = Date.now(),
+  usageSnapshot?: UsageSnapshot
 ): TodayDashboard {
   const start = startOfLocalDay(now);
   const activeAgents: TodayAgent[] = [];
   const recentTasks: TodayTask[] = [];
   const projectSummaries: TodayDashboard['projects'] = [];
+  const taskByWorkspacePath = new Map<
+    string,
+    { taskId: string; taskName: string; taskStatus: string }
+  >();
 
   for (const project of projects) {
     let todayTasks = 0;
     let projectActiveAgents = 0;
 
     for (const task of project.tasks) {
+      if (task.workspacePath) {
+        taskByWorkspacePath.set(task.workspacePath, {
+          taskId: task.id,
+          taskName: task.name,
+          taskStatus: task.status,
+        });
+      }
+
       const timestamp = parseTimestamp(task.lastInteractedAt);
       if (timestamp !== null && timestamp >= start && timestamp <= now) {
         todayTasks += 1;
@@ -111,7 +144,28 @@ export function buildTodayDashboard(
     activeAgents,
     recentTasks: recentTasks.slice(0, 8),
     projects: projectSummaries,
-    usage: { availability: 'unavailable' },
+    usage: toDashboardUsage(usageSnapshot, taskByWorkspacePath),
+  };
+}
+
+function toDashboardUsage(
+  snapshot: UsageSnapshot | undefined,
+  taskByWorkspacePath: ReadonlyMap<string, { taskId: string; taskName: string; taskStatus: string }>
+): DashboardUsage {
+  if (!snapshot || snapshot.availability === 'unavailable') return { availability: 'unavailable' };
+  return {
+    availability: snapshot.availability,
+    generatedAt: snapshot.generatedAt,
+    providers: snapshot.providers,
+    sessionsToday: snapshot.sessionsToday.map((session) => {
+      const task = session.cwd ? taskByWorkspacePath.get(session.cwd) : undefined;
+      return {
+        ...session,
+        taskId: task?.taskId ?? null,
+        taskName: task?.taskName ?? null,
+        taskStatus: task?.taskStatus ?? null,
+      };
+    }),
   };
 }
 

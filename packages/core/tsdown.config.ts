@@ -37,6 +37,7 @@ export default defineConfig({
     'services-session-intents-node': 'src/services/session-intents/node/index.ts',
     'services-fs-watch-api': 'src/services/fs-watch/api/index.ts',
     'services-fs-watch-node': 'src/services/fs-watch/node/index.ts',
+    'services-usage-node': 'src/services/usage/node/index.ts',
     'runtimes-git-api': 'src/runtimes/git/api/index.ts',
     'runtimes-git-node': 'src/runtimes/git/node/index.ts',
     'runtimes-files-api': 'src/runtimes/files/api/index.ts',

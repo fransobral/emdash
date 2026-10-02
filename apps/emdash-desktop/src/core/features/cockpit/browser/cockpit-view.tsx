@@ -1,8 +1,10 @@
 import { EmptyState } from '@emdash/ui/react/components';
 import { Badge } from '@emdash/ui/react/primitives';
-import { Activity, AlertCircle, Bot, CheckCircle2, Coins } from 'lucide-react';
+import { Activity, AlertCircle, AlertTriangle, Bot, CheckCircle2 } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
-import { Fragment } from 'react';
+import { Fragment, useEffect, useState } from 'react';
+import { getCockpitClient } from '@core/features/cockpit/api/browser/client';
+import type { UsageSnapshot } from '@core/features/cockpit/api/contract';
 import { cockpitViewDef } from '@core/features/cockpit/contributions/views';
 import { getConversationsForTask } from '@core/features/conversations/api/browser/conversation-selectors';
 import { getProjectManagerStore } from '@core/features/projects/api/browser/stores/project-selectors';
@@ -15,6 +17,8 @@ import { registeredTaskData } from '@core/primitives/task-state/browser/task-sta
 import { defineViewRuntime } from '@core/primitives/views/react';
 import { ActiveAgentsList } from './active-agents-list';
 import { buildTodayDashboard, type TodayAgent, type TodayProjectInput } from './cockpit-model';
+import { createUsagePoller } from './usage-poller';
+import { UsageSection, usageCriticalWarnings } from './usage-section';
 
 const ACTIVE_AGENTS_ID = 'cockpit-active-agents';
 
@@ -55,6 +59,7 @@ export const CockpitMainPanel = observer(function CockpitMainPanel() {
                 name: data.name,
                 status: data.status,
                 lastInteractedAt: data.lastInteractedAt,
+                workspacePath: task.workspacePath,
                 conversations: conversations
                   ? [...conversations.conversations.values()].map((conversation) => ({
                       id: conversation.data.id,
@@ -69,21 +74,46 @@ export const CockpitMainPanel = observer(function CockpitMainPanel() {
         : [],
     };
   });
-  const dashboard = buildTodayDashboard(dashboardProjects);
+  const [usage, setUsage] = useState<UsageSnapshot | undefined>(undefined);
+  useEffect(() => {
+    const poller = createUsagePoller({
+      fetchSnapshot: async () => (await getCockpitClient()).usageSnapshot(),
+      onSnapshot: setUsage,
+    });
+    return () => poller.stop();
+  }, []);
+
+  const dashboard = buildTodayDashboard(dashboardProjects, Date.now(), usage);
+  const criticalWarnings = usageCriticalWarnings(dashboard.usage);
 
   return (
     <main className="h-full overflow-y-auto bg-background px-4 py-4 text-foreground sm:px-6 sm:py-5">
       <div className="mx-auto flex max-w-6xl flex-col gap-5">
-        <header className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Hoy</h1>
-            <p className="text-sm text-foreground-muted">
-              Qué están haciendo tus agentes y qué necesita tu atención.
-            </p>
+        <header className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold">Hoy</h1>
+              <p className="text-sm text-foreground-muted">
+                Qué están haciendo tus agentes y qué necesita tu atención.
+              </p>
+            </div>
+            <Badge tone="success">
+              <Activity className="size-3" /> Actualizando en vivo
+            </Badge>
           </div>
-          <Badge tone="success">
-            <Activity className="size-3" /> Actualizando en vivo
-          </Badge>
+          {criticalWarnings.length > 0 && (
+            <div
+              role="alert"
+              className="bg-background-error flex flex-col gap-1 rounded-lg border border-foreground-error p-3 text-sm text-foreground-error"
+            >
+              {criticalWarnings.map((warning) => (
+                <div key={warning} className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  <span>{warning}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </header>
 
         <section aria-label="Resumen de hoy" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -125,18 +155,7 @@ export const CockpitMainPanel = observer(function CockpitMainPanel() {
           <ActiveAgentsList agents={dashboard.activeAgents} onOpen={openAgent} />
         </section>
 
-        <section className="rounded-lg border border-border bg-background-1 p-4">
-          <div className="flex items-start gap-3">
-            <Coins className="mt-0.5 size-5 text-foreground-muted" />
-            <div>
-              <h2 className="font-medium">Tokens no disponibles</h2>
-              <p className="text-sm text-foreground-muted">
-                Los proveedores todavía no reportan un total exacto y comparable. No mostramos
-                estimaciones como consumo real.
-              </p>
-            </div>
-          </div>
-        </section>
+        <UsageSection usage={dashboard.usage} />
 
         {projects.length === 0 ? (
           <EmptyState

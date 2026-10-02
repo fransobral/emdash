@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { UsageSnapshot } from '../api/contract';
 import { buildTodayDashboard } from './cockpit-model';
 
 const now = new Date(2026, 8, 25, 15, 30).getTime();
@@ -108,5 +109,95 @@ describe('buildTodayDashboard', () => {
       recentTasks: [],
       projects: [],
     });
+  });
+
+  it('passes through an exact usage snapshot and joins sessions to tasks by cwd', () => {
+    const usage: UsageSnapshot = {
+      generatedAt: now,
+      availability: 'exact',
+      providers: [
+        {
+          providerId: 'claude',
+          accounts: [
+            {
+              accountId: 'default',
+              label: 'Claude',
+              isDefault: true,
+              rateLimits: { source: 'unavailable', fiveHour: null, weekly: null },
+              modelsToday: [],
+              costTodayUsd: null,
+              costSource: 'unavailable',
+            },
+          ],
+        },
+      ],
+      sessionsToday: [
+        {
+          provider: 'claude',
+          accountId: 'default',
+          accountLabel: 'Claude',
+          sessionId: 'session-1',
+          model: 'claude-sonnet-4-5-20250929',
+          cwd: '/home/ubuntu/worktrees/demo',
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheTokens: 0,
+          startedAt: now,
+          lastActivityAt: now,
+          costUsd: 1.5,
+          costSource: 'exact',
+        },
+        {
+          provider: 'claude',
+          accountId: 'default',
+          accountLabel: 'Claude',
+          sessionId: 'session-2',
+          model: 'claude-sonnet-4-5-20250929',
+          cwd: '/home/ubuntu/worktrees/unmatched',
+          inputTokens: 1,
+          outputTokens: 1,
+          cacheTokens: 0,
+          startedAt: now,
+          lastActivityAt: now,
+          costUsd: null,
+          costSource: 'unavailable',
+        },
+      ],
+    };
+
+    const dashboard = buildTodayDashboard(
+      [
+        {
+          id: 'project',
+          name: 'Project',
+          tasks: [
+            {
+              id: 'task-1',
+              name: 'Mobile dashboard',
+              status: 'in_progress',
+              workspacePath: '/home/ubuntu/worktrees/demo',
+              conversations: [],
+            },
+          ],
+        },
+      ],
+      now,
+      usage
+    );
+
+    expect(dashboard.usage.availability).toBe('exact');
+    if (dashboard.usage.availability === 'unavailable') throw new Error('unreachable');
+    const [matched, unmatched] = dashboard.usage.sessionsToday;
+    expect(matched).toMatchObject({
+      sessionId: 'session-1',
+      taskId: 'task-1',
+      taskName: 'Mobile dashboard',
+    });
+    expect(unmatched).toMatchObject({ sessionId: 'session-2', taskId: null, taskName: null });
+  });
+
+  it('defaults usage to unavailable when no snapshot was fetched yet', () => {
+    const dashboard = buildTodayDashboard([], now);
+    expect(dashboard.usage).toEqual({ availability: 'unavailable' });
   });
 });

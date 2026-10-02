@@ -20,6 +20,7 @@ import {
   type BrowserOperations,
 } from '@core/features/browser/node/wire-controller';
 import { createCatalogWireController } from '@core/features/catalog/node/wire-controller';
+import { createCockpitWireController } from '@core/features/cockpit/node/wire-controller';
 import type { CompensationRunner } from '@core/features/conversations/node/createConversation';
 import { createConversationsWireController } from '@core/features/conversations/node/wire-controller';
 import {
@@ -261,6 +262,9 @@ export const desktopNodeControllers = {
   },
   mcp: {
     create: ({ runtimes }) => createMcpWireController({ runtimes }),
+  },
+  cockpit: {
+    create: ({ logger }) => createCockpitWireController(logger),
   },
   skills: {
     create: ({ runtimes }) => createSkillsWireController({ runtimes }),

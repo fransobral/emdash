@@ -3,6 +3,7 @@ import { agentsContract, agentsDomain } from '@core/features/agents/api';
 import { automationsContract, automationsDomain } from '@core/features/automations/api';
 import { browserContract, browserDomain } from '@core/features/browser/api';
 import { catalogDomain, catalogWireContract } from '@core/features/catalog/api';
+import { cockpitContract, cockpitDomain } from '@core/features/cockpit/api';
 import { conversationsContract, conversationsDomain } from '@core/features/conversations/api';
 import { devPerfContract, devPerfDomain } from '@core/features/dev-perf/api';
 import { editorContract, editorDomain } from '@core/features/editor/api';
@@ -52,6 +53,7 @@ export const desktopDomainContracts = {
   [accountDomain]: accountContract,
   [agentsDomain]: agentsContract,
   [appSettingsDomain]: appSettingsContract,
+  [cockpitDomain]: cockpitContract,
   [devPerfDomain]: devPerfContract,
   [editorDomain]: editorContract,
   [filesDomain]: filesWireContract,
