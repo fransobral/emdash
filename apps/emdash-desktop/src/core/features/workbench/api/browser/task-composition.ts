@@ -1,7 +1,18 @@
 import { nativePathIdentityKey } from '@emdash/core/primitives/path/api';
 import type { TerminalShellId } from '@emdash/core/primitives/terminal-shell/api';
-import { computed, makeAutoObservable, observable, reaction, runInAction, when } from 'mobx';
-import type { ConversationManagerStore } from '@core/features/conversations/api/browser/conversation-manager';
+import {
+  comparer,
+  computed,
+  makeAutoObservable,
+  observable,
+  reaction,
+  runInAction,
+  when,
+} from 'mobx';
+import type {
+  ConversationManagerStore,
+  ConversationStore,
+} from '@core/features/conversations/api/browser/conversation-manager';
 import { EditorViewStore } from '@core/features/editor/api/browser/task-editor/stores/editor-view-store';
 import type { FileTabResource } from '@core/features/editor/api/browser/task-editor/stores/file-tab-resource';
 import {
@@ -292,6 +303,25 @@ export class TaskComposition {
     return this._workspace;
   }
 
+  /**
+   * A chat that finished while nobody watched used to exist only in the chats list,
+   * which desktop hides behind a toggle, so its result went unnoticed. Open it as a
+   * background tab; once seen it no longer qualifies, so closing it sticks.
+   */
+  private openInBackground(tabs: ReadonlyArray<{ kind: string; conversationId: string }>): void {
+    runInAction(() => {
+      for (const { kind, conversationId } of tabs) {
+        if (this.paneLayout.isOpen(kind, conversationId)) continue;
+        this.paneLayout.focusedPane.adoptDescriptor({
+          kind,
+          tabId: crypto.randomUUID(),
+          isPreview: false,
+          conversationId,
+        });
+      }
+    });
+  }
+
   private async hydrateAndSeedPaneLayout(): Promise<void> {
     if (this._paneHydrated) return;
     await this._conversations.list.load();
@@ -437,6 +467,13 @@ export class TaskComposition {
 
     this.paneLayout.startPersistence();
     this.editorView.startFiles(workspace.path, workspace.sshConnectionId);
+    this._sessionDisposers.push(
+      reaction(
+        () => unseenConversationTabs(this._conversations.conversations.values()),
+        (tabs) => this.openInBackground(tabs),
+        { fireImmediately: true, equals: comparer.structural }
+      )
+    );
     this._sessionDisposers.push(
       reaction(
         () => {
@@ -617,4 +654,19 @@ function sanitizePaneLayoutConversations(
     groups,
     activeGroupId: activeGroupId ?? value.activeGroupId,
   };
+}
+
+export function unseenConversationTabs(
+  conversations: Iterable<ConversationStore>
+): Array<{ kind: string; conversationId: string }> {
+  const tabs: Array<{ kind: string; conversationId: string }> = [];
+  for (const conversation of conversations) {
+    const status = conversation.indicatorStatus;
+    if (status === null || status === 'working') continue;
+    tabs.push({
+      kind: conversation.data.type === 'acp' ? 'acp-chat' : 'conversation',
+      conversationId: conversation.data.id,
+    });
+  }
+  return tabs;
 }

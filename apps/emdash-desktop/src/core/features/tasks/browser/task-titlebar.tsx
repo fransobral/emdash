@@ -12,7 +12,7 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
-  Clock,
+  MessagesSquare,
   FileDiff,
   FolderOpen,
   GitBranch,
@@ -21,6 +21,7 @@ import {
   Terminal,
 } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
+import { taskAgentStatus } from '@core/features/conversations/api/browser/conversation-selectors';
 import { ConnectionStatusDot } from '@core/features/machines/contributions/browser/connection-status-dot';
 import {
   asAvailableProject,
@@ -113,6 +114,9 @@ const ActiveTaskTitlebar = observer(function ActiveTaskTitlebar({
   const workspace = useWorkspace();
   const taskView = useTaskComposition();
   const gitCheckout = workspace.get(gitCheckoutStoreToken);
+  // The chats list hides behind this toggle on desktop; flag chats with unread results.
+  const taskStatus = taskStore ? taskAgentStatus(taskStore) : null;
+  const hasUnseenConversation = taskStatus !== null && taskStatus !== 'working';
 
   const {
     isPublished,
@@ -158,7 +162,9 @@ const ActiveTaskTitlebar = observer(function ActiveTaskTitlebar({
                 render={
                   <Popover.Trigger className="flex items-center gap-1 text-sm text-foreground-muted hover:text-foreground">
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="max-w-56 truncate max-md:max-w-36">{taskDisplayName(taskStore)}</span>
+                      <span className="max-w-56 truncate max-md:max-w-36">
+                        {taskDisplayName(taskStore)}
+                      </span>
                       <ConnectionStatusDot state={workspace.connectionState} />
                     </span>
                     <ChevronDown className="size-3.5 shrink-0" />
@@ -400,8 +406,17 @@ const ActiveTaskTitlebar = observer(function ActiveTaskTitlebar({
             <Tooltip.Root>
               <Tooltip.Trigger
                 render={
-                  <ToggleGroup.Item size="sm" icon value="conversations" aria-label="Conversations">
-                    <Clock className="size-3.5" />
+                  <ToggleGroup.Item
+                    size="sm"
+                    icon
+                    value="conversations"
+                    aria-label="Conversations"
+                    className="relative"
+                  >
+                    <MessagesSquare className="size-3.5" />
+                    {hasUnseenConversation && (
+                      <span className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-foreground-diff-added" />
+                    )}
                   </ToggleGroup.Item>
                 }
               />
