@@ -73,10 +73,18 @@ export class SessionMaterializer {
     const binding = this.deps.agentHost.resolveAcp(input.providerId);
     if (!binding) return acpErr.providerUnsupported(input.providerId);
 
+    // A conversation that already carries an explicit CODEX_HOME (a user-chosen
+    // account, resolved in main from the conversation's agentAccountId) must never be
+    // silently overlaid or failed over onto the shared usage-limit fallback home — that
+    // would route the user's chosen account's traffic through a different account.
+    const hasExplicitCodexHome = hasExplicitCodexHomeEnv(input.providerId, input.env);
+
     // Applied here, the single point where the connection (and therefore spawn) env is
     // built, so every Codex launch or relaunch picks up the fallback home while it is
     // active, and launches after it expires fall straight back to the default env.
-    const codexFallbackOverlay = this.deps.codexFallback.envOverlay(input.providerId, Date.now());
+    const codexFallbackOverlay = hasExplicitCodexHome
+      ? undefined
+      : this.deps.codexFallback.envOverlay(input.providerId, Date.now());
     const effectiveEnv = codexFallbackOverlay
       ? { ...input.env, ...codexFallbackOverlay }
       : input.env;
@@ -131,7 +139,8 @@ export class SessionMaterializer {
           input.sessionId,
           epoch,
           scope,
-          usingCodexFallbackHome
+          usingCodexFallbackHome,
+          hasExplicitCodexHome
         );
         let loaded = false;
         let endLoad = () => {};
@@ -214,7 +223,8 @@ export class SessionMaterializer {
           response.sessionId,
           epoch,
           scope,
-          usingCodexFallbackHome
+          usingCodexFallbackHome,
+          hasExplicitCodexHome
         );
         record.cell.applySessionMeta({
           modes: response.modes,
@@ -300,11 +310,15 @@ export class SessionMaterializer {
     acpSessionId: string,
     epoch: number,
     scope: Scope,
-    usingCodexFallbackHome: boolean
+    usingCodexFallbackHome: boolean,
+    hasExplicitCodexHome: boolean
   ): SessionRecord {
     const recordRef: { current?: SessionRecord } = {};
     const codexFailoverEligible =
-      input.providerId === 'codex' && this.deps.codexFallback.configured && !usingCodexFallbackHome;
+      input.providerId === 'codex' &&
+      this.deps.codexFallback.configured &&
+      !usingCodexFallbackHome &&
+      !hasExplicitCodexHome;
     const callbacks: SessionCellCallbacks = {
       onSessionStateChanged: () => {
         if (recordRef.current) this.callbacks.onRecordChanged(recordRef.current);
@@ -481,6 +495,19 @@ export class SessionMaterializer {
   ): LoadSessionRequest {
     return { cwd, sessionId, mcpServers };
   }
+}
+
+/**
+ * True when the start input already carries an explicit `CODEX_HOME` for a Codex
+ * launch — meaning a specific account was resolved for this conversation in main
+ * (see `resolveAgentAccountEnv`). The Codex usage-limit fallback must never overlay
+ * or fail over such a launch onto a different account's config directory.
+ */
+export function hasExplicitCodexHomeEnv(
+  providerId: string,
+  env: Record<string, string> | undefined
+): boolean {
+  return providerId === 'codex' && Boolean(env?.CODEX_HOME);
 }
 
 function isAuthRequiredError(error: unknown): boolean {

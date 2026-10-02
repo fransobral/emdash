@@ -6,7 +6,28 @@ import type { AcpConnectionEntry, AcpConnectionSource } from '#runtimes/acp/node
 import { CodexFallbackState } from './codex-fallback-state';
 import type { ConversationHandle } from './conversation-handle';
 import type { ConfigOverrides, SessionRecord } from './conversation-types';
-import { SessionMaterializer, type SessionMaterializerCallbacks } from './session-materializer';
+import {
+  hasExplicitCodexHomeEnv,
+  SessionMaterializer,
+  type SessionMaterializerCallbacks,
+} from './session-materializer';
+import type { AcpRuntimeDeps } from './types';
+
+describe('hasExplicitCodexHomeEnv', () => {
+  it('is true only for codex with a non-empty CODEX_HOME', () => {
+    expect(hasExplicitCodexHomeEnv('codex', { CODEX_HOME: '/accounts/codex-2' })).toBe(true);
+  });
+
+  it('is false for codex without a CODEX_HOME', () => {
+    expect(hasExplicitCodexHomeEnv('codex', undefined)).toBe(false);
+    expect(hasExplicitCodexHomeEnv('codex', {})).toBe(false);
+    expect(hasExplicitCodexHomeEnv('codex', { CODEX_HOME: '' })).toBe(false);
+  });
+
+  it('is false for other providers even with CODEX_HOME set', () => {
+    expect(hasExplicitCodexHomeEnv('claude', { CODEX_HOME: '/accounts/codex-2' })).toBe(false);
+  });
+});
 
 describe('SessionMaterializer', () => {
   it('preserves the existing session after a failed load and cleans up its provisional route', async () => {
@@ -89,6 +110,41 @@ describe('SessionMaterializer', () => {
       sessionId: 'retained-session',
       conversationId: 'conv-materializer',
     });
+
+    await setup.scope.dispose();
+  });
+
+  it('skips the Codex usage-limit fallback overlay when the conversation has an explicit CODEX_HOME', async () => {
+    // Only `agentHost.resolveAcp` existence-checks the provider here; the actual session
+    // traffic below flows through the injected `connections` fake, not through agentHost.
+    const h = makeAcpHarness({
+      agentHost: { resolveAcp: () => ({}) } as unknown as AcpRuntimeDeps['agentHost'],
+    });
+    h.agent.loadSession.mockResolvedValueOnce({});
+    const codexFallback = new CodexFallbackState('/fallback/codex-home');
+    codexFallback.activate(Date.now() + 60_000);
+    const setup = materializerHarness(
+      h,
+      {},
+      { providerId: 'codex', env: { CODEX_HOME: '/explicit/account/home' } },
+      codexFallback
+    );
+
+    const result = await setup.materializer.materialize(
+      setup.entry,
+      setup.entry.descriptor,
+      1,
+      setup.scope,
+      setup.controller.signal
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    // The explicit account env wins: no fallback overlay, so no silent failover either.
+    expect(result.data.record.usingCodexFallbackHome).toBe(false);
+    expect(setup.connections.acquire).toHaveBeenCalledWith(
+      expect.objectContaining({ env: { CODEX_HOME: '/explicit/account/home' } })
+    );
 
     await setup.scope.dispose();
   });
@@ -206,7 +262,8 @@ describe('SessionMaterializer', () => {
 function materializerHarness(
   harness: ReturnType<typeof makeAcpHarness>,
   configOverrides: ConfigOverrides = {},
-  inputOverrides: Parameters<typeof makeStartInput>[0] = {}
+  inputOverrides: Parameters<typeof makeStartInput>[0] = {},
+  codexFallback: CodexFallbackState = new CodexFallbackState(undefined)
 ) {
   const input = makeStartInput({
     conversationId: 'conv-materializer',
@@ -273,7 +330,7 @@ function materializerHarness(
       agentHost: harness.deps.agentHost,
       resolveAttachment: harness.deps.resolveAttachment,
       logger: harness.deps.logger,
-      codexFallback: new CodexFallbackState(undefined),
+      codexFallback,
     },
     connections,
     callbacks
@@ -289,6 +346,7 @@ function materializerHarness(
     loading,
     routes,
     release,
+    connections,
   };
 }
 
