@@ -2,7 +2,7 @@
   "name": "@emdash/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Emdash Web \u2014 self-hosted web frontend for the Emdash agentic development environment",
+  "description": "Emdash Web — self-hosted web frontend for the Emdash agentic development environment",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
