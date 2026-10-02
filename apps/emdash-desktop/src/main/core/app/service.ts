@@ -142,6 +142,13 @@ class AppService implements Disposable {
     const platform = process.platform as PlatformKey;
     const availability: Record<string, boolean> = {};
 
+    // A headless Linux host (emdash-web on a server) cannot show GUI apps: launching
+    // one only fails, e.g. the terminal button erroring with "gnome-terminal: not found".
+    if (platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+      for (const openInApp of Object.values(OPEN_IN_APPS)) availability[openInApp.id] = false;
+      return availability;
+    }
+
     for (const openInApp of Object.values(OPEN_IN_APPS)) {
       const platformConfig = openInApp.platforms[platform];
       if (!platformConfig && !openInApp.alwaysAvailable) {

@@ -95,6 +95,25 @@ function setPlatform(platform: NodeJS.Platform): void {
   });
 }
 
+describe('AppService.checkInstalledApps', () => {
+  afterEach(() => {
+    if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform);
+    vi.unstubAllEnvs();
+  });
+
+  it('reports no GUI apps on a headless Linux host', async () => {
+    setPlatform('linux');
+    vi.stubEnv('DISPLAY', '');
+    vi.stubEnv('WAYLAND_DISPLAY', '');
+
+    const availability = await appService.checkInstalledApps();
+
+    expect(availability.terminal).toBe(false);
+    expect(Object.values(availability).some(Boolean)).toBe(false);
+    expect(mocks.exec).not.toHaveBeenCalled();
+  });
+});
+
 describe('AppService.openIn', () => {
   beforeEach(() => {
     vi.clearAllMocks();
