@@ -75,6 +75,10 @@ describe('GitHub connect-and-resume', () => {
   };
 
   beforeEach(() => {
+    // These cases cover the desktop connect flow; the web build hides OAuth.
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      `${navigator.userAgent} Electron/40.0.0`
+    );
     accountHooks.signIn.mockClear();
     githubHooks.deviceFlowAuth.mockClear();
     controller = {
@@ -93,6 +97,7 @@ describe('GitHub connect-and-resume', () => {
     for (const entry of [...modalStore.stack]) modalStore.removeEntry(entry.key);
     await act(async () => root.unmount());
     host.remove();
+    vi.restoreAllMocks();
   });
 
   async function renderConnectModal() {

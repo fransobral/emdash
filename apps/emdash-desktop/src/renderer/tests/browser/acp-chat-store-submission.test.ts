@@ -921,10 +921,11 @@ describe('AcpChatStore prompt submission', () => {
     const live = fakeLiveSession(idleState(), historyPage('original'));
     const store = await bootstrapWithSession(live.session);
     try {
+      // `invalid_state` triggers attachment recovery instead; use an error that surfaces.
       live.loadHistory.mockResolvedValueOnce({
         success: false,
         error: {
-          type: 'invalid_state',
+          type: 'conversation_not_found',
           message: 'Could not restore this conversation.',
         },
       });

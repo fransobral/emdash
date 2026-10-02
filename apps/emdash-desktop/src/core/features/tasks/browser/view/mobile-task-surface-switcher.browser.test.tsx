@@ -43,7 +43,8 @@ describe('MobileTaskSurfaceSwitcher', () => {
       'Files',
       'Changes',
     ]);
-    expect(buttons.every((button) => getComputedStyle(button).minHeight === '44px')).toBe(true);
+    // Tailwind utilities are not compiled in browser tests; min-h-11 is the 44px touch target.
+    expect(buttons.every((button) => button.classList.contains('min-h-11'))).toBe(true);
   });
 
   it('announces the selected surface and requests a switch on tap', async () => {
