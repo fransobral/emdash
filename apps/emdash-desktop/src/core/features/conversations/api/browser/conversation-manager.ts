@@ -705,9 +705,18 @@ export class ConversationStore {
 
   markSeen() {
     this.seen = true;
-    void getConversationsClient().then((client) =>
-      client.markConversationSeen({ conversationId: this.data.id })
-    );
+    void getConversationsClient()
+      .then((client) => client.markConversationSeen({ conversationId: this.data.id }))
+      .catch((error) => {
+        // Browser builds talk to the main process over the network; a dropped
+        // request here must not fail silently, or the server-persisted seen
+        // flag never catches up with the optimistic local state and the
+        // notification indicator reappears after the next reload.
+        log.warn('ConversationStore: failed to mark conversation seen', {
+          conversationId: this.data.id,
+          error,
+        });
+      });
   }
 
   dispose() {
