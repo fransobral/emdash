@@ -925,7 +925,7 @@ describe('AcpChatStore prompt submission', () => {
       live.loadHistory.mockResolvedValueOnce({
         success: false,
         error: {
-          type: 'conversation_not_found',
+          type: 'initialize_failed',
           message: 'Could not restore this conversation.',
         },
       });
