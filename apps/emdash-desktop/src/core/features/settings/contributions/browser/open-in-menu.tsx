@@ -113,6 +113,10 @@ export const OpenInMenu: React.FC<OpenInMenuProps> = ({
     });
   }, [buttonAppId, loading, triggerOpenIn]);
 
+  // Nothing can be opened (e.g. emdash-web on a headless server): drop the control
+  // rather than leave a disabled button and an empty menu.
+  if (!loading && menuApps.length === 0) return null;
+
   return (
     <div
       className={cn(
@@ -156,47 +160,49 @@ export const OpenInMenu: React.FC<OpenInMenuProps> = ({
           </Tooltip.Content>
         </Tooltip.Root>
       </Tooltip.Provider>
-      <DropdownMenu.Root>
-        <Tooltip.Root>
-          <Tooltip.Trigger
-            render={
-              <DropdownMenu.Trigger
-                className="group flex size-6 shrink-0 items-center justify-center border-none bg-transparent transition-colors hover:bg-background-1 hover:text-foreground"
-                aria-label="Open in options"
-              >
-                <ChevronDown className="size-3.5" />
-              </DropdownMenu.Trigger>
-            }
-          ></Tooltip.Trigger>
-          <Tooltip.Content side="bottom">Select open in app</Tooltip.Content>
-        </Tooltip.Root>
-        <DropdownMenu.Content align="end" sideOffset={6} width="content">
-          <DropdownMenu.RadioGroup
-            value={defaultApp ?? undefined}
-            onValueChange={(value) => {
-              if (isValidOpenInAppId(value)) selectAndOpenApp(value as OpenInAppId);
-            }}
-          >
-            {menuApps.map((app) => {
-              const isAvailable = loading
-                ? availability[app.id] === true
-                : availability[app.id] !== false;
-              return (
-                <DropdownMenu.RadioItem key={app.id} value={app.id} disabled={!isAvailable}>
-                  {icons[app.id] && (
-                    <img
-                      src={icons[app.id]}
-                      alt={labels[app.id] || app.label}
-                      className={`h-4 w-4 rounded ${app.invertInDark ? 'emdark:invert' : ''}`}
-                    />
-                  )}
-                  {labels[app.id] || app.label}
-                </DropdownMenu.RadioItem>
-              );
-            })}
-          </DropdownMenu.RadioGroup>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
+      {menuApps.length > 0 && (
+        <DropdownMenu.Root>
+          <Tooltip.Root>
+            <Tooltip.Trigger
+              render={
+                <DropdownMenu.Trigger
+                  className="group flex size-6 shrink-0 items-center justify-center border-none bg-transparent transition-colors hover:bg-background-1 hover:text-foreground"
+                  aria-label="Open in options"
+                >
+                  <ChevronDown className="size-3.5" />
+                </DropdownMenu.Trigger>
+              }
+            ></Tooltip.Trigger>
+            <Tooltip.Content side="bottom">Select open in app</Tooltip.Content>
+          </Tooltip.Root>
+          <DropdownMenu.Content align="end" sideOffset={6} width="content">
+            <DropdownMenu.RadioGroup
+              value={defaultApp ?? undefined}
+              onValueChange={(value) => {
+                if (isValidOpenInAppId(value)) selectAndOpenApp(value as OpenInAppId);
+              }}
+            >
+              {menuApps.map((app) => {
+                const isAvailable = loading
+                  ? availability[app.id] === true
+                  : availability[app.id] !== false;
+                return (
+                  <DropdownMenu.RadioItem key={app.id} value={app.id} disabled={!isAvailable}>
+                    {icons[app.id] && (
+                      <img
+                        src={icons[app.id]}
+                        alt={labels[app.id] || app.label}
+                        className={`h-4 w-4 rounded ${app.invertInDark ? 'emdark:invert' : ''}`}
+                      />
+                    )}
+                    {labels[app.id] || app.label}
+                  </DropdownMenu.RadioItem>
+                );
+              })}
+            </DropdownMenu.RadioGroup>
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      )}
     </div>
   );
 };

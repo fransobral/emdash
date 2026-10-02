@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
       cursor: true,
       terminal: true,
     },
+    // Populated in beforeEach once OPEN_IN_APPS has been imported — vi.hoisted
+    // runs before top-level imports, so it cannot reference them directly.
+    installedApps: [] as unknown[],
     loading: false,
   },
   toast: Object.assign(vi.fn(), { error: vi.fn() }),
@@ -45,7 +48,7 @@ vi.mock('@core/features/settings/api/browser/useOpenInApps', () => ({
       terminal: 'Terminal',
     },
     availability: mocks.openInApps.availability,
-    installedApps: [OPEN_IN_APPS.finder, OPEN_IN_APPS.cursor, OPEN_IN_APPS.terminal],
+    installedApps: mocks.openInApps.installedApps,
     platform: 'win32',
     loading: mocks.openInApps.loading,
   }),
@@ -147,6 +150,11 @@ describe('OpenInMenu', () => {
       cursor: true,
       terminal: true,
     };
+    mocks.openInApps.installedApps = [
+      OPEN_IN_APPS.finder,
+      OPEN_IN_APPS.cursor,
+      OPEN_IN_APPS.terminal,
+    ];
     mocks.openInApps.loading = false;
     dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>');
     vi.stubGlobal('window', dom.window);
@@ -224,5 +232,17 @@ describe('OpenInMenu', () => {
     const cursorOption = container.querySelector('[data-testid="open-in-option-cursor"]');
     expect(cursorOption).not.toBeNull();
     expect(cursorOption).toHaveProperty('disabled', true);
+  });
+
+  it('renders nothing instead of an empty popover when no apps are available', async () => {
+    mocks.openInApps.installedApps = [];
+    mocks.openInApps.availability = { finder: false, cursor: false, terminal: false };
+
+    await act(async () => {
+      root.render(React.createElement(OpenInMenu, { path: 'C:/repo' }));
+    });
+
+    expect(container.querySelectorAll('button')).toHaveLength(0);
+    expect(container.querySelector('[data-testid^="open-in-option-"]')).toBeNull();
   });
 });
