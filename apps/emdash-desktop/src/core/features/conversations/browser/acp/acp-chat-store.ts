@@ -1,6 +1,7 @@
 import type { ChatContext, ChatImageAttachment, ChatState, ChatView } from '@emdash/chat-ui';
 import { formatHostRef } from '@emdash/core/primitives/host/api';
 import type {
+  AgentState,
   PromptAttachment,
   PromptInput,
   QueuedPrompt,
@@ -106,7 +107,6 @@ export type AcpLoadError =
   | { kind: 'unavailable'; message: string }
   | { kind: 'history_unavailable'; message: string }
   | { kind: 'generic'; message: string };
-
 
 /** How long a prompt with unknown delivery may take to show up after the connection recovers. */
 const UNDELIVERED_PROMPT_GRACE_MS = 20_000;
@@ -353,6 +353,10 @@ export class AcpChatStore {
     return this.session?.mcpServers.current() ?? [];
   }
 
+  get agentRuns(): AgentState[] {
+    return this.session?.agents.current() ?? [];
+  }
+
   get permissionQueue(): PermissionQueueItem[] {
     return (this.session?.sessionState.current().pendingPermissions ?? []).map((request) => ({
       requestId: request.requestId,
@@ -431,6 +435,11 @@ export class AcpChatStore {
 
   bindView(view: ChatView | null): void {
     this._view = view;
+  }
+
+  /** Scroll the transcript to the row for the given item id (best-effort; no-op without a bound view). */
+  scrollToItem(id: string): void {
+    this._view?.scrollToItem(id, { behavior: 'smooth' });
   }
 
   async uploadAttachment(input: AcpAttachmentUploadInput): Promise<AttachmentRef | null> {
@@ -548,7 +557,8 @@ export class AcpChatStore {
         this.unconfirmedPromptIds = this.unconfirmedPromptIds.filter((id) => id !== promptId);
         restoreDraft();
         toast.error('Message not delivered', {
-          description: 'The connection dropped before the agent got it. It is back in the composer.',
+          description:
+            'The connection dropped before the agent got it. It is back in the composer.',
         });
       });
     }, UNDELIVERED_PROMPT_GRACE_MS);

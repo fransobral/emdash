@@ -50,6 +50,7 @@ import { resolveIssueMentionSource } from '@core/primitives/issues/api/issue-con
 import { linkedIssueMentionName, type LinkedIssue } from '@core/primitives/linked-issues/api';
 import { log } from '@core/primitives/logging/browser/logger';
 import { usePaneContext } from '@core/primitives/workbench-shell/browser/tabs/pane-context';
+import { AcpAgentsTray } from './acp-agents-tray';
 import type { AcpChatStore, AcpPromptAttachment } from './acp-chat-store';
 import type { AcpChatTabResource } from './acp-chat-tab-resource';
 import { chatViewCommandForShortcut, executeChatViewCommand } from './acp-chat-view-commands';
@@ -587,6 +588,7 @@ const ComposerForStore = observer(function ComposerForStore({
           </Button>
         </div>
       )}
+      <AcpAgentsTray store={store} />
       <div>
         <ChatComposer
           model={store.composerModel}
