@@ -52,6 +52,11 @@ export type TuiConversationProviderDependencies = {
     projectId: string;
     host: HostRef;
   }): Promise<GitCredentialsSessionSpec | undefined>;
+  /** Maps a conversation's selected agent account to CLI config-dir env overrides. */
+  resolveAgentAccountEnv(
+    providerId: string,
+    accountId: string | undefined
+  ): Promise<Record<string, string>>;
 };
 
 function parseExtraArgs(value: string | undefined): string[] {
@@ -129,7 +134,7 @@ export class TuiConversationProvider implements ConversationProvider {
     const agentSession = resolveAgentSession(conversation, mode);
     const effectiveInitialPrompt =
       !agentSession.isResuming && mode === 'start' ? initialPrompt : undefined;
-    const [providerConfig, taskSettings, colorEnv, launchContext, gitCredentials] =
+    const [providerConfig, taskSettings, colorEnv, launchContext, gitCredentials, agentAccountEnv] =
       await Promise.all([
         this.dependencies.getProviderConfig(conversation.providerId),
         conversation.autoApprove === true
@@ -141,6 +146,10 @@ export class TuiConversationProvider implements ConversationProvider {
           projectId: this.projectId,
           host: this.host,
         }),
+        this.dependencies.resolveAgentAccountEnv(
+          conversation.providerId,
+          conversation.agentAccountId
+        ),
       ]);
     if (!launchContext.success) {
       throw new Error(`Could not resolve task session launch context: ${launchContext.error.type}`);
@@ -151,6 +160,7 @@ export class TuiConversationProvider implements ConversationProvider {
       ...(providerConfig?.env ?? {}),
       ...colorEnv,
       ...launchContext.data.env,
+      ...agentAccountEnv,
     };
     const sessionId = makePtySessionId(this.projectId, this.taskId, conversation.id);
 

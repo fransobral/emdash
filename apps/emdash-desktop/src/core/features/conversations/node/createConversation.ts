@@ -114,6 +114,7 @@ export async function createConversation(
           ...(modeId && { modeId }),
           ...(params.effort && { effort: params.effort }),
           ...(params.collaborationMode && { collaborationMode: params.collaborationMode }),
+          ...(params.agentAccountId && { agentAccountId: params.agentAccountId }),
           ...(initialQueue?.length && { initialQueue }),
         }
       : {
@@ -122,6 +123,7 @@ export async function createConversation(
           ...(params.autoApprove !== undefined && { autoApprove: params.autoApprove }),
           ...(params.model && { model: params.model }),
           ...(params.initialPrompt && { initialPrompt: params.initialPrompt }),
+          ...(params.agentAccountId && { agentAccountId: params.agentAccountId }),
         };
   const config = configObj;
 

@@ -99,6 +99,7 @@ it.each(['claude', 'codex'] as const)(
         taskSessions: { getTask: vi.fn() },
         withCompensation: async ({ action }) => action(),
         hostIsReachable: () => true,
+        providerAccountStore: {} as never,
       });
 
       async function createAndAttachTask(projectId: string): Promise<void> {

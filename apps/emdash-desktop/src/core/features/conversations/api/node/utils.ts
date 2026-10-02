@@ -36,6 +36,7 @@ export function mapConversationRowToConversation(row: ConversationRow): Conversa
     modeId: config?.type === 'acp' ? config.modeId : undefined,
     effort: config?.type === 'acp' ? config.effort : undefined,
     collaborationMode: config?.type === 'acp' ? config.collaborationMode : undefined,
+    agentAccountId: config?.agentAccountId,
     initialQueue: initialQueueFromRow(row),
     lastInteractedAt: row.lastSessionActivityAt ?? null,
     isInitialConversation: row.isInitialConversation,

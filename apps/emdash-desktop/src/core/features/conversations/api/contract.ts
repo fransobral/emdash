@@ -25,6 +25,7 @@ import {
   type ProjectAttachmentError,
 } from '@core/features/projects/api/attachments';
 import type {
+  AgentAccountsByProvider,
   Conversation,
   ConversationEvent,
   CreateConversationParams,
@@ -191,6 +192,10 @@ export const conversationsContract = defineContract({
   getConversations: procedure({
     input: z.void(),
     output: z.custom<Conversation[]>(),
+  }),
+  listAgentAccounts: procedure({
+    input: z.void(),
+    output: z.custom<AgentAccountsByProvider>(),
   }),
   createConversation: fallible({
     input: z.custom<CreateConversationParams>(),

@@ -108,6 +108,7 @@ describe('createConversationsWireController', () => {
       taskSessions: { getTask: vi.fn() },
       withCompensation: async ({ action }) => action(),
       hostIsReachable: () => true,
+      providerAccountStore: {} as never,
     });
 
     await expect(
@@ -511,6 +512,7 @@ function setupController(options: {
     taskSessions: { getTask: vi.fn() },
     withCompensation: async ({ action }) => action(),
     hostIsReachable: () => true,
+    providerAccountStore: {} as never,
     resolveTarget: async () => ({
       ...target,
       host: options.host ?? target.host,

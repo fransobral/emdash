@@ -23,6 +23,8 @@ const ptyConfigV1 = z.object({
   initialPrompt: z.string().optional(),
   /** Model to pass to the agent CLI. Empty string or absent = CLI default. */
   model: z.string().optional(),
+  /** Selected provider account id. Absent, empty, or the default account means no env override. */
+  agentAccountId: z.string().optional(),
 });
 
 const acpConfigV1 = z.object({
@@ -41,6 +43,8 @@ const acpConfigV1 = z.object({
   effort: z.string().optional(),
   /** Last user-selected provider collaboration mode, such as Codex Default or Plan. */
   collaborationMode: z.string().optional(),
+  /** Selected provider account id. Absent, empty, or the default account means no env override. */
+  agentAccountId: z.string().optional(),
 });
 
 export const conversationConfig = defineVersionedSchema()

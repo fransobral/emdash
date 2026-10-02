@@ -32,6 +32,7 @@ import {
   prepareTerminalFiles,
   type TerminalFileSources,
 } from '@core/services/attachments/node/prepare-terminal-files';
+import type { ProviderAccountStore } from '@core/services/provider-accounts/api/provider-account-store';
 import { forwardLiveModel } from '@core/services/runtime-clients/node/forward-live-model';
 import { conversationsContract } from '../api';
 import {
@@ -41,6 +42,7 @@ import {
   type ConversationsRuntimeBroker,
   type ConversationsRuntimeResolveError as RuntimeResolveError,
 } from '../api/runtime-adapter';
+import { listAgentAccounts, resolveAgentAccountEnv } from './agent-accounts';
 import { conversationWireEvents } from './event-host';
 
 type ConversationRuntimeTarget = Readonly<{
@@ -87,6 +89,7 @@ export type CreateConversationsWireControllerOptions = Readonly<{
   taskSessions: Pick<TaskSessionManager, 'getTask'>;
   withCompensation: CompensationRunner;
   hostIsReachable: (hostRef: SerializedHostRef) => boolean;
+  providerAccountStore: ProviderAccountStore;
 }>;
 
 export function createConversationsWireController(
@@ -100,7 +103,8 @@ export function createConversationsWireController(
         options.workspaceIdentity,
         options.db,
         options.getProviderEnv,
-        options.sessionLaunchContexts
+        options.sessionLaunchContexts,
+        options.providerAccountStore
       ));
   const hooks = options.hooks ?? createDefaultRuntimeHooks(options);
   const conversationOperations = createConversationOperations({
@@ -174,6 +178,7 @@ export function createConversationsWireController(
         ),
     },
     getConversations: () => conversationOperations.getConversations(),
+    listAgentAccounts: () => listAgentAccounts(options.providerAccountStore),
     createConversation: (input) =>
       withAttachedProject(options.projects, input.projectId, async () =>
         ok(await conversationOperations.createConversation(input))
@@ -375,7 +380,8 @@ async function resolveConversationRuntimeTarget(
   workspaceIdentity: WorkspaceIdentityResolver,
   db: AppDb,
   getProviderEnv: ((providerId: string) => Promise<Record<string, string> | undefined>) | undefined,
-  sessionLaunchContexts: Pick<TaskSessionLaunchContextResolver, 'resolve'>
+  sessionLaunchContexts: Pick<TaskSessionLaunchContextResolver, 'resolve'>,
+  providerAccountStore: ProviderAccountStore
 ): Promise<ConversationRuntimeTarget> {
   const [row] = await db
     .select({
@@ -413,7 +419,7 @@ async function resolveConversationRuntimeTarget(
   const workspacePath = identity?.path;
   // Resolve the ACP agent environment in main from provider and project/task settings. The
   // renderer supplies only a conversation id and cannot inject spawn variables.
-  const [providerEnv, launchContext] = await Promise.all([
+  const [providerEnv, launchContext, agentAccountEnv] = await Promise.all([
     row.providerId && getProviderEnv ? getProviderEnv(row.providerId) : undefined,
     row.type === 'acp' && workspacePath
       ? sessionLaunchContexts.resolve({
@@ -422,6 +428,9 @@ async function resolveConversationRuntimeTarget(
           ...(row.workspaceId ? { workspaceId: row.workspaceId } : {}),
         })
       : undefined,
+    row.providerId
+      ? resolveAgentAccountEnv(providerAccountStore, row.providerId, acpConfig?.agentAccountId)
+      : undefined,
   ]);
   if (launchContext && !launchContext.success) {
     throw new Error(`Could not resolve task session launch context: ${launchContext.error.type}`);
@@ -429,6 +438,7 @@ async function resolveConversationRuntimeTarget(
   const processEnv = {
     ...(providerEnv ?? {}),
     ...(launchContext?.success ? launchContext.data.env : {}),
+    ...(agentAccountEnv ?? {}),
   };
   const acpInput =
     row.type === 'acp' && workspacePath && row.providerId

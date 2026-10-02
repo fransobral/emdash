@@ -5,9 +5,14 @@ import { useCallback, useState } from 'react';
 import { hostRefFromConnectionId } from '@core/features/agents/api/browser/client';
 import { useAgents } from '@core/features/agents/api/browser/use-agents';
 import { AgentSelector } from '@core/features/agents/contributions/browser/agent-selector';
+import {
+  accountNotLoggedInHint,
+  resolveSelectedAccountId,
+} from '@core/features/conversations/api/browser/agent-account-selection';
 import { nextDefaultConversationTitle } from '@core/features/conversations/api/browser/conversation-title-utils';
 import { useNewChatModelOptions } from '@core/features/conversations/api/browser/discovered-models';
 import { conversationRegistry } from '@core/features/conversations/api/browser/stores/conversation-registry';
+import { useAgentAccounts } from '@core/features/conversations/api/browser/use-agent-accounts';
 import { useEffectiveProvider } from '@core/features/conversations/api/browser/use-effective-provider';
 import { providerPreferencesMemento } from '@core/features/conversations/contributions/mementos';
 import { getProjectSshConnectionId } from '@core/features/projects/api/browser/stores/project-selectors';
@@ -16,7 +21,10 @@ import { useTaskSettings } from '@core/features/tasks/api/browser/hooks/useTaskS
 import { useModalController } from '@core/manifests/browser/modal-api';
 import { projectAvailabilityUi } from '@core/manifests/browser/project-availability-ui';
 import { agentSupportsAcp, agentSupportsAutoApprove } from '@core/primitives/agents/api';
-import type { ConversationType } from '@core/primitives/conversations/api';
+import {
+  isAgentAccountProviderId,
+  type ConversationType,
+} from '@core/primitives/conversations/api';
 import { ConfirmButton } from '@core/primitives/keybindings/browser/confirm-button';
 import { getMementoClient } from '@core/primitives/mementos/browser';
 import { useMemento } from '@core/primitives/mementos/react';
@@ -50,6 +58,8 @@ export const CreateConversationModal = observer(function CreateConversationModal
   );
   const [providerPreferences, setProviderPreferences] = useMemento(providerPreferencesMemento);
   const [modelOverrides, setModelOverrides] = useState<Record<string, string | null>>({});
+  const [accountOverrides, setAccountOverrides] = useState<Record<string, string | null>>({});
+  const { data: agentAccounts } = useAgentAccounts();
   const liveActionDisabledReason = projectAvailabilityUi.getLiveActionDisabledReason(projectId);
   useCloseGuard(isSubmitting);
 
@@ -82,6 +92,26 @@ export const CreateConversationModal = observer(function CreateConversationModal
     (model: string | null) => {
       if (!preferenceKey) return;
       setModelOverrides((current) => ({ ...current, [preferenceKey]: model }));
+    },
+    [preferenceKey]
+  );
+  const providerAccounts =
+    providerId && agentAccounts && isAgentAccountProviderId(providerId)
+      ? agentAccounts[providerId]
+      : undefined;
+  const showAccountPicker = Boolean(providerAccounts && providerAccounts.length > 1);
+  const hasAccountOverride =
+    preferenceKey !== null && Object.prototype.hasOwnProperty.call(accountOverrides, preferenceKey);
+  const selectedAccountId = providerAccounts
+    ? preferenceKey !== null && hasAccountOverride
+      ? (accountOverrides[preferenceKey] ?? undefined)
+      : resolveSelectedAccountId(providerAccounts, savedPreference?.accountId)
+    : undefined;
+  const selectedAccount = providerAccounts?.find((account) => account.id === selectedAccountId);
+  const setSelectedAccountId = useCallback(
+    (accountId: string | null) => {
+      if (!preferenceKey) return;
+      setAccountOverrides((current) => ({ ...current, [preferenceKey]: accountId }));
     },
     [preferenceKey]
   );
@@ -131,12 +161,14 @@ export const CreateConversationModal = observer(function CreateConversationModal
         effort: conversationType === 'acp' ? savedPreference?.effort : undefined,
         collaborationMode:
           conversationType === 'acp' ? savedPreference?.collaborationMode : undefined,
+        agentAccountId: selectedAccountId,
         type: conversationType,
       });
       try {
         setProviderPreferences((current) =>
           patchProviderPreference(current, host, providerId, conversationType, {
             model: selectedModel,
+            accountId: selectedAccountId ?? null,
           })
         );
       } catch (preferenceError) {
@@ -165,6 +197,7 @@ export const CreateConversationModal = observer(function CreateConversationModal
     savedPreference?.effort,
     savedPreference?.modeId,
     savedPreference?.collaborationMode,
+    selectedAccountId,
     setProviderPreferences,
   ]);
 
@@ -207,6 +240,33 @@ export const CreateConversationModal = observer(function CreateConversationModal
                   ))}
                 </Select.Content>
               </Select.Root>
+            </Field.Root>
+          ) : null}
+          {showAccountPicker && providerAccounts ? (
+            <Field.Root>
+              <Field.Label>Account</Field.Label>
+              <Select.Root
+                value={selectedAccountId ?? ''}
+                onValueChange={(value) => setSelectedAccountId(value || null)}
+              >
+                <Select.Trigger appearance="input" className="w-full">
+                  <Select.Value placeholder="Default account">
+                    {selectedAccount?.label ?? 'Default account'}
+                  </Select.Value>
+                </Select.Trigger>
+                <Select.Content align="start" width="trigger">
+                  {providerAccounts.map((account) => (
+                    <Select.Item key={account.id} value={account.id}>
+                      {account.label}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+              {accountNotLoggedInHint(selectedAccount) && (
+                <p className="text-xs text-foreground-muted">
+                  {accountNotLoggedInHint(selectedAccount)}
+                </p>
+              )}
             </Field.Root>
           ) : null}
           {showAutoApproveToggle ? (

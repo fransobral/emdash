@@ -19,6 +19,7 @@ import { ProviderTokenDispatcher } from '@core/features/account/node/services/pr
 import { getPluginMetadata } from '@core/features/agents/api/node/plugin-registry';
 import { AutomationsService } from '@core/features/automations/api/node/automations-service';
 import { buildAutomationDeployment } from '@core/features/automations/node/deployment-builder';
+import { resolveAgentAccountEnv } from '@core/features/conversations/node/agent-accounts';
 import { createConversationDeletionSweepKind } from '@core/features/conversations/node/sweep/conversation-deletion-sweep';
 import { ConversationBackfillService } from '@core/features/conversations/node/sync/conversation-backfill';
 import { ConversationSyncService } from '@core/features/conversations/node/sync/conversation-sync-service';
@@ -280,6 +281,8 @@ export async function bootServices(
     // this phase; sessions only call this after boot completes.
     resolveSessionGitCredentials: (params: { projectId: string; host: HostRef }) =>
       gitCredentials.resolveSessionSpec(params),
+    resolveAgentAccountEnv: (providerId: string, accountId: string | undefined) =>
+      resolveAgentAccountEnv(providerAccountRegistry, providerId, accountId),
   };
   const projectAttachmentAdapter = createProjectAttachmentAdapter({
     db,

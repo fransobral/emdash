@@ -393,6 +393,7 @@ export const desktopNodeControllers = {
       hostIsReachable,
       logger,
       projects,
+      providerAccountStore,
       providerSettings,
       runtimes,
       sessionLaunchContexts,
@@ -413,6 +414,7 @@ export const desktopNodeControllers = {
         workspaceIdentity,
         withCompensation: compensation,
         hostIsReachable,
+        providerAccountStore,
       }),
   },
   previewServers: {

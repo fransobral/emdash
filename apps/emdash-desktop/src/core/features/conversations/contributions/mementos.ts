@@ -27,6 +27,8 @@ const providerPreferenceSchema = z.object({
   modeId: z.string().optional(),
   effort: z.string().optional(),
   collaborationMode: z.string().optional(),
+  /** Last user-selected agent account id for this provider+transport, re-applied on next create. */
+  accountId: z.string().optional(),
 });
 
 export const providerPreferencesSchema = defineVersionedSchema()

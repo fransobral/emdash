@@ -246,6 +246,7 @@ function createProvider(
         (() => Promise.resolve({ autoTrustWorktrees: overrides.autoTrustWorktrees ?? false })),
       getTerminalColorEnv: () => Promise.resolve({}),
       resolveSessionGitCredentials: () => Promise.resolve(undefined),
+      resolveAgentAccountEnv: () => Promise.resolve({}),
     }
   );
 }

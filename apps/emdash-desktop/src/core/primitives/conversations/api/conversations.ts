@@ -35,6 +35,8 @@ export type Conversation = {
   effort?: string;
   /** Last user-selected ACP collaboration mode, re-applied on session start. */
   collaborationMode?: string;
+  /** Selected provider account id. Absent, empty, or the default account means no env override. */
+  agentAccountId?: string;
   /** Initial queued prompts to deliver on first ACP spawn. Only present before sessionId is set. */
   initialQueue?: InitialQueuePrompt[];
   isInitialConversation: boolean | null;
@@ -130,6 +132,8 @@ export type CreateConversationParams = {
   effort?: string;
   /** Provider-native ACP collaboration mode to apply on first activation. */
   collaborationMode?: string;
+  /** Selected provider account id. Absent, empty, or the default account means no env override. */
+  agentAccountId?: string;
   isInitialConversation?: boolean;
   initialSize?: { cols: number; rows: number };
   initialPrompt?: string;
