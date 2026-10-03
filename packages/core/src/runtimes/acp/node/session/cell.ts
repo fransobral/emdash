@@ -94,6 +94,15 @@ export class SessionCell {
   private quiesceTimer: ReturnType<typeof setTimeout> | null = null;
   private lastAgentTurnEventAt = 0;
   private lastRunningAgentCount = 0;
+  /**
+   * Id of the turn currently being settled by {@link settleTurn}, visible only to the
+   * synchronous `'settleAgents'` effect it triggers (see `settleRunningAgents`). The ACP
+   * adapter holds a turn's `session/prompt` response open until every background subagent
+   * it spawned (Agent/Task tool launches) has itself settled — so once that promise
+   * resolves with a non-cancelled outcome, any background agent whose `launchTurnId`
+   * matches this turn is guaranteed to be done, and it is safe to settle it here too.
+   */
+  private settlingTurnId: string | null = null;
   private readonly effectDriver: MachineEffectDriver<Effect>;
 
   constructor(private readonly deps: SessionCellDeps) {
@@ -499,10 +508,21 @@ export class SessionCell {
 
   settleTurn(outcome: TranscriptTurnOutcome): void {
     const previousRunningAgentCount = this.lastRunningAgentCount;
+    // Captured before the transcript commits the active turn to history (which clears
+    // `activeTurn`), so the 'settleAgents' effect below can scope background agents to
+    // the exact turn that just ended. A cancelled or errored outcome also dispatches a
+    // follow-up 'all'/'failed' settle (see evolve's TurnEnded case): left null here, this
+    // turn's background agents are skipped by the 'turn'/'completed' pass and correctly
+    // caught as 'failed' by that follow-up instead of being marked 'completed' first.
+    this.settlingTurnId =
+      outcome.kind === 'cancelled' || outcome.kind === 'error'
+        ? null
+        : (this.transcript.activeTurn?.id ?? null);
     this.transcript.settleTurn(outcome);
     this.dispatchAgentsChangedIfNeeded(previousRunningAgentCount);
     this.emitTranscriptChanged();
     this.applyEvent({ type: 'TurnEnded', outcome: machineOutcome(outcome) });
+    this.settlingTurnId = null;
   }
 
   processClosed(exitCode: number | null): void {
@@ -719,9 +739,21 @@ export class SessionCell {
   }
 
   private settleRunningAgents(scope: 'turn' | 'all', status: 'completed' | 'failed'): void {
+    // Only set while settleTurn() is synchronously dispatching the 'TurnEnded' event that
+    // produced this effect (see settlingTurnId's doc) — null for every other caller (full
+    // history replay via 'all', the direct 'all' cancel/process-closed lanes, and
+    // ReplayEnded's 'turn' lane, none of which carry the ACP hold-open guarantee).
+    const settlingTurnId = scope === 'turn' ? this.settlingTurnId : null;
     const runningAgents = this.transcript.agents.filter((agent) => {
       if (agent.status !== 'running') return false;
-      return scope === 'all' || agent.background !== true;
+      if (scope === 'all') return true;
+      if (agent.background !== true) return true;
+      // Background agents only settle here when this turn is the one that launched them:
+      // the ACP adapter defers a turn's prompt response until every background subagent it
+      // spawned has settled, so a background agent whose launchTurnId matches the turn that
+      // just ended is guaranteed to be done — one still running in an earlier (or later,
+      // not-yet-settled) turn is left untouched.
+      return settlingTurnId !== null && agent.launchTurnId === settlingTurnId;
     });
 
     for (const agent of runningAgents) {

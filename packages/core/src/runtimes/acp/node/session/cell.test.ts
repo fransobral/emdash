@@ -121,6 +121,115 @@ describe('SessionCell prompts', () => {
   });
 });
 
+describe('SessionCell background agents', () => {
+  it('settles a background agent to completed when the turn that launched it ends normally', async () => {
+    const { cell, agent } = makeCell();
+    let resolvePrompt!: (value: { stopReason: 'end_turn' }) => void;
+    agent.prompt = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<{ stopReason: 'end_turn' }>((resolve) => {
+          resolvePrompt = resolve;
+        })
+    );
+
+    const pending = cell.prompt({ text: 'launch an explorer' });
+    cell.push({
+      kind: 'subagent',
+      toolCallId: 'tool-1',
+      agentId: 'agent-1',
+      title: 'Explore',
+      status: 'in_progress',
+      parentToolCallId: null,
+      background: true,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'running' }]);
+
+    resolvePrompt({ stopReason: 'end_turn' });
+    await pending;
+
+    expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'completed' }]);
+  });
+
+  it('fails a background agent when its launching turn is cancelled', async () => {
+    const { cell, agent } = makeCell();
+    let resolvePrompt!: (value: { stopReason: 'cancelled' }) => void;
+    agent.prompt = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<{ stopReason: 'cancelled' }>((resolve) => {
+          resolvePrompt = resolve;
+        })
+    );
+
+    const pending = cell.prompt({ text: 'launch an explorer' });
+    cell.push({
+      kind: 'subagent',
+      toolCallId: 'tool-1',
+      agentId: 'agent-1',
+      title: 'Explore',
+      status: 'in_progress',
+      parentToolCallId: null,
+      background: true,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await cell.cancel();
+    expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'running' }]);
+
+    resolvePrompt({ stopReason: 'cancelled' });
+    await pending;
+
+    expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'failed' }]);
+  });
+
+  it('leaves a background agent running when an unrelated turn settles', async () => {
+    const { cell, agent } = makeCell();
+
+    // Seeded directly on the transcript (bypassing cell.push's backgroundAgentCount
+    // bookkeeping) to stand in for an agent whose launchTurnId belongs to a turn other
+    // than the one about to settle — the case the launchTurnId match guards against.
+    // In practice Emdash's own backgroundAgentCount gate already refuses to start a new
+    // turn while any background agent is running, so this cross-turn race cannot occur
+    // through the public prompt() API; this test exercises the guard directly.
+    cell.transcript.pushEvent({
+      kind: 'subagent',
+      toolCallId: 'tool-stale',
+      agentId: 'agent-stale',
+      title: 'Agent from an unrelated turn',
+      status: 'in_progress',
+      parentToolCallId: null,
+      background: true,
+    });
+
+    let resolvePrompt!: (value: { stopReason: 'end_turn' }) => void;
+    agent.prompt = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<{ stopReason: 'end_turn' }>((resolve) => {
+          resolvePrompt = resolve;
+        })
+    );
+    const pending = cell.prompt({ text: 'this turn launches its own agent' });
+    cell.push({
+      kind: 'subagent',
+      toolCallId: 'tool-current',
+      agentId: 'agent-current',
+      title: 'Agent launched by this turn',
+      status: 'in_progress',
+      parentToolCallId: null,
+      background: true,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    resolvePrompt({ stopReason: 'end_turn' });
+    await pending;
+
+    expect(cell.transcript.agents).toMatchObject([
+      { agentId: 'agent-stale', status: 'running' },
+      { agentId: 'agent-current', status: 'completed' },
+    ]);
+  });
+});
+
 describe('SessionCell history replay', () => {
   it('does not keep background agents restored from history running after the load', async () => {
     const { cell, agent } = makePendingCell(new FakeAcpAgent());
