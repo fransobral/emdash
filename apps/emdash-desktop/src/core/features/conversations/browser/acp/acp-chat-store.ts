@@ -6,6 +6,7 @@ import type {
   PromptInput,
   QueuedPrompt,
   SessionMcpServer,
+  TranscriptTurn,
 } from '@emdash/core/runtimes/acp/api/client';
 import type { AttachmentMimeType, AttachmentRef } from '@emdash/core/services/attachments/api';
 import { createScope, type Scope } from '@emdash/shared/concurrency';
@@ -357,6 +358,15 @@ export class AcpChatStore {
 
   get agentRuns(): AgentState[] {
     return this.session?.agents.current() ?? [];
+  }
+
+  /**
+   * The live active turn, or null when idle. Read-only mirror of
+   * `session.activeTurn` for consumers (the agent detail sheet) that need the
+   * current turn's tool-call tree rather than just the flattened agent list.
+   */
+  get activeAgentTurn(): TranscriptTurn | null {
+    return this.session?.activeTurn.current() ?? null;
   }
 
   get permissionQueue(): PermissionQueueItem[] {

@@ -63,20 +63,7 @@ export function deriveAgentsTray(agents: readonly AgentState[], now: number): Ag
       if (aRunning !== bRunning) return aRunning - bRunning;
       return b.startedAt - a.startedAt;
     })
-    .map((candidate) => ({
-      agentId: candidate.agentId,
-      toolCallId: candidate.toolCallId,
-      launchTurnId: candidate.launchTurnId,
-      name: candidate.name,
-      status: candidate.status,
-      background: candidate.background ?? false,
-      elapsedMs: Math.max(
-        0,
-        (candidate.status === 'running' ? now : (candidate.completedAt ?? now)) -
-          candidate.startedAt
-      ),
-      summary: candidate.summary,
-    }));
+    .map((candidate) => toAgentTrayRow(candidate, now));
 
   const counts = visibleAgents.reduce<AgentsTrayCounts>(
     (acc, candidate) => {
@@ -88,6 +75,38 @@ export function deriveAgentsTray(agents: readonly AgentState[], now: number): Ag
   );
 
   return { visible: true, counts, rows };
+}
+
+/** Projects a single `AgentState` into its display-ready tray row at `now`. */
+export function toAgentTrayRow(agent: AgentState, now: number): AgentTrayRow {
+  return {
+    agentId: agent.agentId,
+    toolCallId: agent.toolCallId,
+    launchTurnId: agent.launchTurnId,
+    name: agent.name,
+    status: agent.status,
+    background: agent.background ?? false,
+    elapsedMs: Math.max(
+      0,
+      (agent.status === 'running' ? now : (agent.completedAt ?? now)) - agent.startedAt
+    ),
+    summary: agent.summary,
+  };
+}
+
+/**
+ * Looks up one agent's row by id regardless of tray visibility rules — used
+ * by the agent detail sheet, which stays open for an agent even after it
+ * drops out of the tray's visible set.
+ */
+export function findAgentRow(
+  agents: readonly AgentState[],
+  agentId: string | null,
+  now: number
+): AgentTrayRow | null {
+  if (!agentId) return null;
+  const agent = agents.find((candidate) => candidate.agentId === agentId);
+  return agent ? toAgentTrayRow(agent, now) : null;
 }
 
 /** Formats a duration as `{minutes}m{seconds}s`, e.g. `1m12s`, `0m22s`. */

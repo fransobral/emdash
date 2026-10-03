@@ -3,7 +3,13 @@ import { Button } from '@emdash/ui/react/primitives';
 import { Check, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useMemo, useState } from 'react';
-import { deriveAgentsTray, formatElapsed, type AgentTrayRow } from './acp-agents-tray-model';
+import { AcpAgentDetailSheet } from './acp-agent-detail-sheet';
+import {
+  deriveAgentsTray,
+  findAgentRow,
+  formatElapsed,
+  type AgentTrayRow,
+} from './acp-agents-tray-model';
 import type { AcpChatStore } from './acp-chat-store';
 
 const TICK_MS = 1_000;
@@ -14,7 +20,7 @@ const TICK_MS = 1_000;
  * that module also pulls in transcript parsing, which the renderer bundle
  * does not otherwise need.
  */
-function toolCallItemId(launchTurnId: string, toolCallId: string): string {
+export function toolCallItemId(launchTurnId: string, toolCallId: string): string {
   return `${launchTurnId}:tool:${toolCallId}`;
 }
 
@@ -117,6 +123,7 @@ function AgentRow({
 export const AcpAgentsTray = observer(function AcpAgentsTray({ store }: { store: AcpChatStore }) {
   const [expanded, setExpanded] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const agents = store.agentRuns;
   const hasRunning = agents.some((agent) => agent.status === 'running');
 
@@ -127,39 +134,45 @@ export const AcpAgentsTray = observer(function AcpAgentsTray({ store }: { store:
   }, [hasRunning]);
 
   const snapshot = useMemo(() => deriveAgentsTray(agents, now), [agents, now]);
+  // Looked up from the full agent list (not just the visible snapshot rows) so
+  // the detail sheet stays open and current even once the agent drops out of
+  // the tray's visible set (e.g. a newer batch launches while it's open).
+  const selectedRow = findAgentRow(agents, selectedAgentId, now);
 
   if (!snapshot.visible) return null;
 
-  const handleActivate = (row: AgentTrayRow) => {
-    if (!row.launchTurnId) return;
-    store.scrollToItem(toolCallItemId(row.launchTurnId, row.toolCallId));
-  };
-
   return (
-    <div className="mx-3 mb-1 overflow-hidden rounded-md border border-border">
-      <Button
-        variant="ghost"
-        className="flex w-full items-center justify-between gap-2 px-2 py-1 text-xs"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        <span className="flex items-center gap-2">
-          <span className="text-foreground-muted">Agents</span>
-          <CollapsedSummary counts={snapshot.counts} />
-        </span>
-        {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-      </Button>
-      {expanded && (
-        <div className="max-h-48 overflow-y-auto border-t border-border">
-          {snapshot.rows.map((row) => (
-            <AgentRow
-              key={row.agentId}
-              row={row}
-              onActivate={row.launchTurnId ? handleActivate : null}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+    <>
+      <div className="mx-3 mb-1 overflow-hidden rounded-md border border-border">
+        <Button
+          variant="ghost"
+          className="flex w-full items-center justify-between gap-2 px-2 py-1 text-xs"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <span className="flex items-center gap-2">
+            <span className="text-foreground-muted">Agents</span>
+            <CollapsedSummary counts={snapshot.counts} />
+          </span>
+          {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+        </Button>
+        {expanded && (
+          <div className="max-h-48 overflow-y-auto border-t border-border">
+            {snapshot.rows.map((row) => (
+              <AgentRow
+                key={row.agentId}
+                row={row}
+                onActivate={() => setSelectedAgentId(row.agentId)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      <AcpAgentDetailSheet
+        row={selectedRow}
+        store={store}
+        onClose={() => setSelectedAgentId(null)}
+      />
+    </>
   );
 });
