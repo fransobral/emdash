@@ -58,5 +58,10 @@ export const transcriptTurnSchema = z.object({
   items: z.array(transcriptItemSchema),
   /** Durable settlement for the whole turn; absent for replayed history without an explicit end. */
   outcome: transcriptTurnOutcomeSchema.optional(),
+  /**
+   * True when `items` omits older items of this turn because the turn did not fit a wire
+   * size budget even after truncating individual item text. The raw log keeps every item.
+   */
+  itemsTruncated: z.boolean().optional(),
 });
 export type TranscriptTurn = z.infer<typeof transcriptTurnSchema>;

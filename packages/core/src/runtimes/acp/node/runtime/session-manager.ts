@@ -29,7 +29,12 @@ import type {
   SessionState,
   TerminalState,
 } from '#runtimes/acp/api';
-import { ACP_UNAMBIGUOUS_START_ERROR_TYPES, acpErr } from '#runtimes/acp/api';
+import {
+  ACP_UNAMBIGUOUS_START_ERROR_TYPES,
+  acpErr,
+  boundHistoryPageToBudget,
+  truncateTranscriptTurns,
+} from '#runtimes/acp/api';
 import type { FsPort } from '#runtimes/acp/node/agent-ports/fs-port';
 import type { AgentTerminalManager } from '#runtimes/acp/node/agent-ports/terminal-manager';
 import type { TerminalPort } from '#runtimes/acp/node/agent-ports/terminal-port';
@@ -578,9 +583,22 @@ export class SessionManager {
     const turns = this.getChatHistory(conversationId).committed;
     const filtered = before === undefined ? turns : turns.filter((turn) => turn.seq < before);
     const page = [...filtered].sort((a, b) => b.seq - a.seq).slice(0, limit);
-    const nextCursor = page.length === limit ? page.at(-1)!.seq : null;
+    const requestedNextCursor = page.length === limit ? page.at(-1)!.seq : null;
+    const truncatedTurns = truncateTranscriptTurns(page.reverse());
+    const { turns: bounded, droppedOldestTurnCount } = boundHistoryPageToBudget(truncatedTurns);
+    if (droppedOldestTurnCount > 0) {
+      this.deps.logger.warn('SessionManager: history page exceeded byte budget, splitting', {
+        conversationId,
+        droppedOldestTurnCount,
+        returnedTurnCount: bounded.length,
+      });
+    }
+    // Dropping turns for size means there is more older history than the turn-count limit
+    // alone implied, so the next-page cursor must point at the new oldest returned turn.
+    const nextCursor =
+      droppedOldestTurnCount > 0 ? (bounded[0]?.seq ?? requestedNextCursor) : requestedNextCursor;
     return {
-      turns: page.reverse(),
+      turns: bounded,
       nextCursor,
       position: this.readyRecord(conversationId)?.cell.transcript.position,
       coverage: { fromSeq: nextCursor, beforeSeq: before ?? null },

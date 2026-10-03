@@ -13,6 +13,8 @@ export interface BaseToolCallItem {
   locations?: ToolCallLocation[];
   parentToolCallId?: string;
   children?: ToolNode[];
+  /** True when one or more of this item's text fields were truncated for wire size. */
+  truncated?: boolean;
 }
 
 export interface ToolCallLocation {
@@ -135,6 +137,8 @@ export const baseToolCallItemSchema = z.object({
   parentToolCallId: z.string().optional(),
   /** Nested provider or reducer-derived tool nodes owned by this call. */
   children: toolChildrenSchema.optional(),
+  /** True when one or more of this item's text fields were truncated for wire size. */
+  truncated: z.boolean().optional(),
 });
 
 export const executeToolCallSchema = baseToolCallItemSchema.extend({

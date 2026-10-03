@@ -33,6 +33,7 @@ import {
   createToolCallItem,
   makeToolId,
   SESSION_PLAN_ID,
+  truncateTranscriptTurn,
 } from '#runtimes/acp/api';
 import {
   type Command,
@@ -143,7 +144,16 @@ export class SessionCell {
       canCancel: state.canCancel || this.goalActive,
       historyRevision: this.transcript.historyRevision,
       // Partial replay is never an authoritative transcript position.
-      ...(state.lifecycle === 'replaying' ? {} : { transcript: this.transcript.snapshot }),
+      ...(state.lifecycle === 'replaying'
+        ? {}
+        : {
+            transcript: {
+              ...this.transcript.snapshot,
+              activeTurn: this.transcript.snapshot.activeTurn
+                ? truncateTranscriptTurn(this.transcript.snapshot.activeTurn)
+                : null,
+            },
+          }),
     };
   }
 

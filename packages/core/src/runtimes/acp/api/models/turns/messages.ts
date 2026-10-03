@@ -13,5 +13,7 @@ export const transcriptMessageSchema = z.object({
   text: z.string(),
   /** Attachment metadata only; bytes are served separately by the runtime. */
   attachments: z.array(attachmentMetadataSchema).optional(),
+  /** True when `text` was truncated for wire size; the raw log keeps the full text. */
+  truncated: z.boolean().optional(),
 });
 export type TranscriptMessage = z.infer<typeof transcriptMessageSchema>;

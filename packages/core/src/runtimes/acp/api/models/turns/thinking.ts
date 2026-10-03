@@ -13,5 +13,7 @@ export const transcriptThinkingSchema = z.object({
   startedAt: z.number(),
   /** Frozen duration once the row is finalized. */
   durationMs: z.number().optional(),
+  /** True when `text` was truncated for wire size; the raw log keeps the full text. */
+  truncated: z.boolean().optional(),
 });
 export type TranscriptThinking = z.infer<typeof transcriptThinkingSchema>;

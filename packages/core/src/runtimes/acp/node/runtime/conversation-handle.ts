@@ -3,7 +3,7 @@ import { ok } from '@emdash/shared';
 import { createLifecycleCell, type LifecycleCell, type Scope } from '@emdash/shared/concurrency';
 import { runWithTimeout, type Clock } from '@emdash/shared/scheduling';
 import type { PromptInput } from '#runtimes/acp/api';
-import { acpErr } from '#runtimes/acp/api';
+import { acpErr, truncateTranscriptTurn } from '#runtimes/acp/api';
 import type { AgentTerminalManager } from '#runtimes/acp/node/agent-ports/terminal-manager';
 import type { SessionConfigCatalog } from '#runtimes/acp/node/session/cell';
 import {
@@ -556,7 +556,10 @@ export class ConversationHandle {
       usage: record.cell.usage ?? this.retainedValue.lastKnownUsage,
       plan: record.cell.transcript.plan,
       agents: record.cell.transcript.agents,
-      activeTurn: state.lifecycle === 'replaying' ? null : record.cell.transcript.activeTurn,
+      activeTurn:
+        state.lifecycle === 'replaying' || !record.cell.transcript.activeTurn
+          ? null
+          : truncateTranscriptTurn(record.cell.transcript.activeTurn),
       terminals: this.deps.terminals.listByConversation(this.conversationId),
       mcpServers: this.withMcpStartupFailures(
         record,
