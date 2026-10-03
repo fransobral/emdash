@@ -13,7 +13,7 @@ import { action, makeObservable, observable, runInAction } from 'mobx';
  * real observable sink, so we test the integration without React rendering
  * overhead.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   computeGridDimensions,
   measureTerminalCell,
@@ -283,6 +283,12 @@ async function getPtyModule() {
 }
 
 describe('Controller-driven PTY grid fan-out (FrontendPty.bySession)', () => {
+  // The first dynamic import pulls in xterm; under a full-suite run it alone can exceed the
+  // per-test timeout, so load it once up front with room to spare.
+  beforeAll(async () => {
+    await getPtyModule();
+  }, 60_000);
+
   beforeEach(() => {
     vi.stubGlobal('electronAPI', {
       eventOn: vi.fn(() => () => {}),
