@@ -535,7 +535,9 @@ it.each([
       await page.getByRole('button', { name: 'docs startup error' }).hover();
       await vi.waitFor(() => expect(document.body.textContent).toContain('Connection refused'));
       await page.getByRole('tooltip').hover();
-      expect(page.getByRole('tooltip').element().textContent).toBe('Connection refused');
+      await vi.waitFor(() =>
+        expect(page.getByRole('tooltip').element().textContent).toBe('Connection refused')
+      );
       const info = page
         .getByRole('button', { name: 'docs startup error' })
         .element() as HTMLElement;
@@ -550,10 +552,15 @@ it.each([
         getComputedStyle(row.querySelector('span')!).color
       );
       await userEvent.keyboard('{Escape}');
-      await userEvent.keyboard('{Tab}');
-      info.focus();
-      await vi.waitFor(() =>
-        expect(page.getByRole('tooltip').element().textContent).toBe('Connection refused')
+      await vi.waitFor(() => expect(document.querySelector('[role="tooltip"]')).toBeNull());
+      // Reopening must work after a dismissal. Hover drives it deterministically; programmatic
+      // focus() is not focus-visible in the test browser and only passed while the first
+      // tooltip had not finished closing.
+      await page.getByRole('button', { name: '1 session MCP server, 1 startup failure' }).hover();
+      await page.getByRole('button', { name: 'docs startup error' }).hover();
+      await vi.waitFor(
+        () => expect(page.getByRole('tooltip').element().textContent).toBe('Connection refused'),
+        { timeout: 5000 }
       );
       await page.getByRole('button', { name: '1 session MCP server, 1 startup failure' }).click();
     }
