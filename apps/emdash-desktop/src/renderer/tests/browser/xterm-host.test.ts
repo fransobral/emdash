@@ -1,5 +1,5 @@
 import { Terminal } from '@xterm/xterm';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 async function getPtyModule() {
   return import('@core/features/terminals/api/browser/pty/pty');
@@ -12,6 +12,12 @@ function noopConnector() {
 }
 
 describe('FrontendPty xterm host', () => {
+  // The first dynamic import pulls in xterm; under a full-suite run it alone can exceed the
+  // per-test timeout, so load it once up front with room to spare.
+  beforeAll(async () => {
+    await getPtyModule();
+  }, 60_000);
+
   beforeEach(() => {
     vi.stubGlobal('electronAPI', {
       eventOn: vi.fn(() => () => {}),
