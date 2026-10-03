@@ -324,6 +324,229 @@ describe('enrichClaudeUpdate', () => {
 
     expect(enrichClaudeUpdate(update, makeRaw())).toEqual({ kind: 'ignored' });
   });
+
+  it('reclassifies an async_task_spawned update as a background subagent start', () => {
+    const raw = {
+      sessionUpdate: 'async_task_spawned',
+      asyncTaskId: 'task-1',
+      name: 'Explore',
+      taskType: 'local_agent',
+      description: 'Explore the auth module',
+      showInTranscript: true,
+      canStop: true,
+      outputFilePath: '/tmp/task-1.output',
+      toolCallId: 'tc-launch',
+    } as unknown as SessionUpdate;
+
+    expect(enrichClaudeUpdate({ kind: 'ignored' }, raw)).toEqual({
+      kind: 'subagent',
+      operation: 'start',
+      toolCallId: 'tc-launch',
+      title: 'Explore the auth module',
+      status: 'in_progress',
+      parentToolCallId: null,
+      background: true,
+      agentId: 'task-1',
+      outputFile: '/tmp/task-1.output',
+    });
+  });
+
+  it('falls back to the task name and asyncTaskId when async_task_spawned omits description/toolCallId', () => {
+    const raw = {
+      sessionUpdate: 'async_task_spawned',
+      asyncTaskId: 'task-2',
+      name: 'Background task',
+    } as unknown as SessionUpdate;
+
+    expect(enrichClaudeUpdate({ kind: 'ignored' }, raw)).toMatchObject({
+      kind: 'subagent',
+      toolCallId: 'task-2',
+      title: 'Background task',
+      agentId: 'task-2',
+    });
+  });
+
+  it('reclassifies async_task_progress as an in-progress subagent_update carrying metadata', () => {
+    const raw = {
+      sessionUpdate: 'async_task_progress',
+      asyncTaskId: 'task-1',
+      toolCallId: 'tc-launch',
+      outputFilePath: '/tmp/task-1.output',
+      summary: 'Still exploring',
+    } as unknown as SessionUpdate;
+
+    expect(enrichClaudeUpdate({ kind: 'ignored' }, raw)).toEqual({
+      kind: 'subagent_update',
+      agentId: 'task-1',
+      toolCallId: 'tc-launch',
+      status: 'in_progress',
+      summary: 'Still exploring',
+      outputFile: '/tmp/task-1.output',
+    });
+  });
+
+  it.each([
+    ['completed', 'completed'],
+    ['failed', 'failed'],
+    // The adapter already collapses killed/cancelled/stopped to "stopped"
+    // before publishing async_task_state_update (see async-tasks.js
+    // taskState()); emdash has no "stopped" AgentStatus, so it maps to failed.
+    ['stopped', 'failed'],
+  ] as const)(
+    'reclassifies async_task_state_update state %s as subagent_update status %s',
+    (state, status) => {
+      const raw = {
+        sessionUpdate: 'async_task_state_update',
+        asyncTaskId: 'task-1',
+        toolCallId: 'tc-launch',
+        state,
+        summary: 'Done exploring',
+        outputFilePath: '/tmp/task-1.output',
+      } as unknown as SessionUpdate;
+
+      expect(enrichClaudeUpdate({ kind: 'ignored' }, raw)).toEqual({
+        kind: 'subagent_update',
+        agentId: 'task-1',
+        toolCallId: 'tc-launch',
+        status,
+        summary: 'Done exploring',
+        outputFile: '/tmp/task-1.output',
+      });
+    }
+  );
+
+  it('settles a background agent launched via the Agent tool once async_task_state_update arrives', () => {
+    const p = new AcpTranscriptParser({
+      conversationId: 'claude-stream',
+      enrich: enrichClaudeUpdate,
+    });
+
+    p.push(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'tc-launch',
+        title: 'Agent',
+        kind: 'other',
+        status: 'completed',
+        _meta: {
+          claudeCode: {
+            toolName: 'Agent',
+            toolResponse: {
+              isAsync: true,
+              status: 'async_launched',
+              agentId: 'task-1',
+              description: 'Explore the auth module',
+              outputFile: '/tmp/task-1.output',
+            },
+          },
+        },
+      },
+      0
+    );
+    expect(p.agents[0]).toMatchObject({ agentId: 'task-1', status: 'running', background: true });
+
+    p.push(
+      {
+        sessionUpdate: 'async_task_state_update',
+        asyncTaskId: 'task-1',
+        toolCallId: 'tc-launch',
+        state: 'completed',
+        summary: 'Explored the auth module',
+      } as unknown as SessionUpdate,
+      10
+    );
+
+    expect(p.agents[0]).toMatchObject({
+      agentId: 'task-1',
+      status: 'completed',
+      summary: 'Explored the auth module',
+    });
+  });
+
+  it("nests a background agent's own tool calls under its launch node across a turn boundary", () => {
+    const p = new AcpTranscriptParser({
+      conversationId: 'claude-stream',
+      enrich: enrichClaudeUpdate,
+    });
+
+    // Turn 1: the user asks for help, the model launches a background agent.
+    p.push(
+      {
+        sessionUpdate: 'user_message_chunk',
+        content: { type: 'text', text: 'explore the auth module' },
+      },
+      0
+    );
+    p.push(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'tc-launch',
+        title: 'Agent',
+        kind: 'other',
+        status: 'completed',
+        _meta: {
+          claudeCode: {
+            toolName: 'Agent',
+            toolResponse: {
+              isAsync: true,
+              status: 'async_launched',
+              agentId: 'task-1',
+              description: 'Explore the auth module',
+            },
+          },
+        },
+      },
+      10
+    );
+    p.endTurn(20);
+
+    // Turn 2: a new user message opens a second turn while the agent is still running.
+    p.push(
+      {
+        sessionUpdate: 'user_message_chunk',
+        content: { type: 'text', text: 'anything else running?' },
+      },
+      30
+    );
+
+    // The background agent's own tool call arrives, parented to the launch tool call —
+    // the adapter streams child activity onto the same session regardless of turn.
+    p.push(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'tc-child-1',
+        title: 'Read auth.ts',
+        kind: 'read',
+        status: 'completed',
+        _meta: { claudeCode: { parentToolUseId: 'tc-launch' } },
+      },
+      40
+    );
+
+    const launchTurn = p.history[0];
+    const launchNode = launchTurn.items.find(
+      (item) => 'toolCallId' in item && item.toolCallId === 'tc-launch'
+    );
+    expect(launchNode).toMatchObject({ kind: 'spawn-subagent-tool-call', agentId: 'task-1' });
+    expect(launchNode && 'children' in launchNode ? launchNode.children : undefined).toMatchObject([
+      { toolCallId: 'tc-child-1', title: 'Read auth.ts' },
+    ]);
+
+    // Settling the agent updates the launch node's own status too.
+    p.push(
+      {
+        sessionUpdate: 'async_task_state_update',
+        asyncTaskId: 'task-1',
+        toolCallId: 'tc-launch',
+        state: 'completed',
+      } as unknown as SessionUpdate,
+      50
+    );
+    const settledLaunchNode = p.history[0].items.find(
+      (item) => 'toolCallId' in item && item.toolCallId === 'tc-launch'
+    );
+    expect(settledLaunchNode).toMatchObject({ status: 'done' });
+  });
 });
 
 describe('parseTaskNotification', () => {
