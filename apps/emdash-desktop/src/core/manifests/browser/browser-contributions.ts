@@ -6,6 +6,7 @@ import { editorBrowserContributions } from '@core/features/editor/contributions/
 import { integrationsBrowserContributions } from '@core/features/integrations/contributions/browser';
 import { libraryBrowserContributions } from '@core/features/library/contributions/browser';
 import { machinesBrowserContributions } from '@core/features/machines/contributions/browser';
+import { multitaskBrowserContributions } from '@core/features/multitask/contributions/browser';
 import { projectsBrowserContributions } from '@core/features/projects/contributions/browser';
 import { settingsBrowserContributions } from '@core/features/settings/contributions/browser';
 import { skillsBrowserContributions } from '@core/features/skills/contributions/browser';
@@ -16,6 +17,7 @@ import { workbenchBrowserContributions } from '@core/features/workbench/contribu
 export const featureViewRuntimes = [
   ...workbenchBrowserContributions.views,
   ...cockpitBrowserContributions.views,
+  ...multitaskBrowserContributions.views,
   ...automationsBrowserContributions.views,
   ...projectsBrowserContributions.views,
   ...settingsBrowserContributions.views,

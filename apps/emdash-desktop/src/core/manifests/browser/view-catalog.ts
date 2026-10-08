@@ -1,5 +1,6 @@
 import { automationsViewDef } from '@core/features/automations/contributions/views';
 import { cockpitFilesViewDef, cockpitViewDef } from '@core/features/cockpit/contributions/views';
+import { multitaskViewDef } from '@core/features/multitask/contributions/views';
 import { projectViewDef } from '@core/features/projects/contributions/views';
 import { settingsViewDef } from '@core/features/settings/contributions/views';
 import { taskViewDef } from '@core/features/tasks/contributions/views';
@@ -10,6 +11,7 @@ export const viewCatalog = defineViewCatalog([
   homeViewDef,
   cockpitViewDef,
   cockpitFilesViewDef,
+  multitaskViewDef,
   automationsViewDef,
   projectViewDef,
   taskViewDef,

@@ -22,7 +22,8 @@ export type FocusView =
   | 'settings'
   | 'automations'
   | 'cockpit'
-  | 'cockpitFiles';
+  | 'cockpitFiles'
+  | 'multitask';
 export type FocusMainPanel = 'agents' | 'editor' | 'diff' | 'browser' | 'terminal';
 export type FocusedRegion = 'main' | 'bottom';
 
@@ -74,6 +75,7 @@ export type TelemetryEventProperties = {
   automations_viewed: { from_view: FocusView | null };
   cockpit_viewed: { from_view: FocusView | null };
   cockpit_files_viewed: { from_view: FocusView | null };
+  multitask_viewed: { from_view: FocusView | null };
 
   automation_created: {
     enabled: boolean;

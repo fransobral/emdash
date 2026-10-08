@@ -3,6 +3,7 @@ import {
   discoveredModelsMemento,
   providerPreferencesMemento,
 } from '@core/features/conversations/contributions/mementos';
+import { multitaskLayoutMemento } from '@core/features/multitask/contributions/mementos';
 import {
   projectViewMemento,
   workspaceChromeMemento,
@@ -34,6 +35,7 @@ export const mementoCatalog: readonly MementoCatalogEntry[] = [
   acpDraftMemento,
   discoveredModelsMemento,
   providerPreferencesMemento,
+  multitaskLayoutMemento,
   projectViewMemento,
   workspaceChromeMemento,
   taskChromeMemento,
