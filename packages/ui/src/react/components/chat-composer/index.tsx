@@ -1238,7 +1238,9 @@ export function ChatComposer({
                   icon
                   className={cx(styles.sendButtonRound, styles.mobileTouchTarget)}
                   // Keep focus in the editor so the mobile keyboard stays open after sending.
-                  onMouseDown={(event) => event.preventDefault()}
+                  // pointerdown (not mousedown) fires at touch start, before the editor blurs
+                  // and the closing keyboard shifts the button out from under the tap.
+                  onPointerDown={(event) => event.preventDefault()}
                   onClick={() => handleSubmit(editorRef.current?.getText() ?? '')}
                   disabled={disabled || (!isWorking && !canSubmit)}
                   aria-label={isWorking ? 'Queue message' : 'Send message'}
