@@ -31,6 +31,7 @@ import { ContextUsageIndicator } from './context-usage-indicator';
 import type { ContextUsage } from './context-usage-indicator';
 import { PermissionBand } from './permission-band';
 import type { ComposerPermissionRequest } from './permission-band';
+import { PermissionSheet } from './permission-sheet';
 import { QueuedPromptsBand } from './queued-prompts-band';
 import type { ComposerQueuedPrompt } from './queued-prompts-band';
 import * as styles from './chat-composer.css';
@@ -306,6 +307,12 @@ export interface ChatComposerProps {
   permissionQueueCount?: number;
   /** Called with the chosen optionId when the user resolves a permission request. */
   onResolvePermission?: (optionId: string) => void;
+  /**
+   * How a pending permission request is presented. `'sheet'` (phones) opens a
+   * modal bottom sheet and falls back to the inline band if the user dismisses
+   * it; `'band'` (default) always uses the inline band.
+   */
+  permissionPresentation?: 'band' | 'sheet';
 
   /** Prompts accepted while the agent is busy and waiting to be sent. */
   queuedPrompts?: ComposerQueuedPrompt[];
@@ -703,6 +710,7 @@ export function ChatComposer({
   permissionRequest,
   permissionQueueCount = 1,
   onResolvePermission,
+  permissionPresentation = 'band',
   queuedPrompts = [],
   onEditQueuedPrompt,
   onDeleteQueuedPrompt,
@@ -713,6 +721,8 @@ export function ChatComposer({
   const mcpFailureCount = mcpServers.filter((server) => server.startupError).length;
   const editorRef = useRef<PromptEditorRef | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  // Request whose sheet the user dismissed; the inline band takes over for it.
+  const [dismissedSheetFor, setDismissedSheetFor] = useState<string | null>(null);
   const [editorText, setEditorText] = useState('');
 
   // Retain the last notice so its content stays rendered while the band
@@ -870,8 +880,14 @@ export function ChatComposer({
     !!onDeleteQueuedPrompt &&
     !!onReorderQueuedPrompts &&
     !!onSendQueuedPromptNow;
-  // The permission band takes priority over the notice band.
-  const hasBand = canShowQueuedPrompts || !!(permissionRequest ?? notice);
+  const sheetOpen =
+    permissionPresentation === 'sheet' &&
+    !!permissionRequest &&
+    !!onResolvePermission &&
+    dismissedSheetFor !== permissionRequest.requestId;
+  // The permission band takes priority over the notice band. While the sheet
+  // presents the request there is no inline band to attach the shell to.
+  const hasBand = canShowQueuedPrompts || (sheetOpen ? !!notice : !!(permissionRequest ?? notice));
   const shouldHandleSubmitAttempt = !disabled && (isWorking ? !!onSubmitWhileWorking : canSubmit);
   const resolvedPlaceholder = disabled
     ? 'Session closed'
@@ -892,8 +908,19 @@ export function ChatComposer({
         />
       )}
 
+      {permissionRequest && onResolvePermission && permissionPresentation === 'sheet' && (
+        <PermissionSheet
+          request={permissionRequest}
+          queueCount={permissionQueueCount}
+          open={sheetOpen}
+          onDismiss={() => setDismissedSheetFor(permissionRequest.requestId)}
+          onResolve={onResolvePermission}
+          onRejectAndExplain={() => window.setTimeout(() => editorRef.current?.focus(), 250)}
+        />
+      )}
+
       {/* Permission band — shown when the agent is awaiting user approval. */}
-      {permissionRequest && onResolvePermission && (
+      {permissionRequest && onResolvePermission && !sheetOpen && (
         <PermissionBand
           request={permissionRequest}
           queueCount={permissionQueueCount}

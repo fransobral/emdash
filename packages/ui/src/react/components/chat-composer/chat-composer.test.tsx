@@ -181,4 +181,33 @@ describe('ChatComposer', () => {
 
     await waitFor(() => expect(onCollaborationModeChange).toHaveBeenCalledWith('plan'));
   });
+
+  it('presents a permission request as a sheet and falls back to the band when dismissed', async () => {
+    const onResolve = vi.fn();
+    const { findByRole, queryByRole, getByText } = render(
+      <ChatComposer
+        onSubmit={() => {}}
+        permissionPresentation="sheet"
+        permissionRequest={{
+          requestId: 'r1',
+          title: 'Execute',
+          actionKind: 'execute',
+          agentName: 'Codex',
+          command: 'git push',
+          options: [
+            { optionId: 'a', name: 'Allow once', kind: 'allow_once' },
+            { optionId: 'r', name: 'Reject', kind: 'reject_once' },
+          ],
+        }}
+        onResolvePermission={onResolve}
+      />
+    );
+
+    const dialog = await findByRole('dialog', { name: 'Codex quiere ejecutar un comando' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+
+    await waitFor(() => expect(queryByRole('dialog')).toBeNull());
+    expect(getByText('Execute')).toBeTruthy();
+    expect(onResolve).not.toHaveBeenCalled();
+  });
 });

@@ -25,6 +25,7 @@ export type {
   ComposerQueuedPrompt as QueuedPromptsBandItem,
 } from './chat-composer/queued-prompts-band';
 export { PermissionBand } from './chat-composer/permission-band';
+export { PermissionSheet } from './chat-composer/permission-sheet';
 export type {
   PermissionBandProps,
   ComposerPermissionRequest,
