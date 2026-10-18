@@ -11,6 +11,7 @@ import { defineViewRuntime } from '@core/primitives/views/react';
 import { TaskMainPanel, TaskViewLoadingState } from './main-panel';
 import { TaskScope } from './task-scope';
 import { TaskTitlebar } from './task-titlebar';
+import { useMobileTaskShell } from './view/use-mobile-task-shell';
 
 const TaskViewWrapperWithProviders = observer(function TaskViewWrapperWithProviders({
   children,
@@ -42,10 +43,16 @@ const TaskViewWrapperWithProviders = observer(function TaskViewWrapperWithProvid
   );
 });
 
+// The mobile shell renders its own header (back, title, overflow), so the dense
+// desktop titlebar is omitted on phone-width viewports.
+function TaskTitlebarSlot() {
+  return useMobileTaskShell() ? null : <TaskTitlebar />;
+}
+
 export const taskViewRuntime = defineViewRuntime(taskViewDef, {
   slots: {
     wrap: TaskViewWrapperWithProviders,
-    titlebar: TaskTitlebar,
+    titlebar: TaskTitlebarSlot,
     main: TaskMainPanel,
   },
   resolve: ({ projectId, taskId }) => {
