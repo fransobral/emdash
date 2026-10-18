@@ -31,6 +31,10 @@ export type WebNotificationDependencies = {
   showPermissionPrompt(enable: () => Promise<WebNotificationStartResult>): void;
   listenForWorkerMessages(listener: (event: MessageEvent<unknown>) => void): () => void;
   openTarget(target: NotificationTarget, notificationId: string): void;
+  /** Registers a push subscription with the server; true when remote push is active. */
+  /** Tells the service worker the page can now receive a pending notification-open message. */
+  announceReady?(): void;
+  syncPush?(registration: ServiceWorkerRegistration): Promise<boolean>;
 };
 
 function isNotificationTarget(value: unknown): value is NotificationTarget {
@@ -66,11 +70,14 @@ export function createWebNotificationController(deps: WebNotificationDependencie
   let stopObserving: (() => void) | null = null;
   let stopListening: (() => void) | null = null;
   const knownIds = new Set<string>();
+  // While a push subscription is live the service worker shows the OS notification,
+  // so the page must not also fire its own local one for the same item.
+  let isPushActive = false;
 
   async function deliver(notification: AppNotification): Promise<void> {
     const isAgentEvent =
       notification.kind === 'agent-complete' || notification.kind === 'agent-attention';
-    if (!registration || !deps.isDocumentHidden() || !isAgentEvent) return;
+    if (!registration || isPushActive || !deps.isDocumentHidden() || !isAgentEvent) return;
     const settings = await deps.getSettings();
     if (!settings.enabled || !settings.osNotifications) return;
     await registration.showNotification(notification.title, {
@@ -97,6 +104,7 @@ export function createWebNotificationController(deps: WebNotificationDependencie
       deps.getPermission() === 'default' ? await deps.requestPermission() : deps.getPermission();
     if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'permission-required';
     registration ??= await deps.registerServiceWorker(WORKER_PATH);
+    isPushActive = (await deps.syncPush?.(registration).catch(() => false)) === true;
     if (!stopObserving) {
       const initial = await deps.loadFeed();
       for (const item of initial) knownIds.add(item.id);
@@ -106,6 +114,7 @@ export function createWebNotificationController(deps: WebNotificationDependencie
       const message = parseOpenMessage(event.data);
       if (message) deps.openTarget(message.target, message.notificationId);
     });
+    deps.announceReady?.();
     return 'enabled';
   }
 

@@ -194,4 +194,41 @@ describe('web notification controller', () => {
       'notification-2'
     );
   });
+  describe('with an active push subscription', () => {
+    it('skips the local OS notification so the push is the only one', async () => {
+      const f = fixture({ syncPush: vi.fn(async () => true) });
+      await f.controller.start();
+      await f.dependencies.registerServiceWorker('/service-worker.js');
+      // start() with 'default' permission only prompts; enable through the prompt action.
+      await f.prompt.mock.calls[0]?.[0]();
+
+      f.setFeed([notification({ id: 'notification-2', createdAt: 200 })]);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(f.registration.showNotification).not.toHaveBeenCalled();
+    });
+
+    it('falls back to local notifications when the push sync fails', async () => {
+      const f = fixture({ syncPush: vi.fn(async () => false) });
+      await f.controller.start();
+      await f.prompt.mock.calls[0]?.[0]();
+
+      f.setFeed([notification({ id: 'notification-2', createdAt: 200 })]);
+      await vi.waitFor(() => expect(f.registration.showNotification).toHaveBeenCalledOnce());
+    });
+
+    it('falls back to local notifications when the push sync throws', async () => {
+      const f = fixture({
+        syncPush: vi.fn(async () => {
+          throw new Error('push blocked');
+        }),
+      });
+      await f.controller.start();
+      await f.prompt.mock.calls[0]?.[0]();
+
+      f.setFeed([notification({ id: 'notification-2', createdAt: 200 })]);
+      await vi.waitFor(() => expect(f.registration.showNotification).toHaveBeenCalledOnce());
+    });
+  });
 });

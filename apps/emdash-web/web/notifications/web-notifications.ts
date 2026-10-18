@@ -10,6 +10,7 @@ import {
   createWebNotificationController,
   type WebNotificationDependencies,
 } from './web-notification-controller';
+import { syncPushSubscription, type WebPushClientDependencies } from './web-push-client';
 
 let feedStorePromise: Promise<NotificationsFeedStore> | null = null;
 
@@ -17,6 +18,30 @@ function getFeedStore(): Promise<NotificationsFeedStore> {
   feedStorePromise ??= getNotificationsFeedStore();
   return feedStorePromise;
 }
+
+const pushClientDependencies: WebPushClientDependencies = {
+  getJson: async (path) => {
+    try {
+      const response = await fetch(path, { credentials: 'same-origin' });
+      return response.ok ? await response.json() : null;
+    } catch {
+      return null;
+    }
+  },
+  postJson: async (path, body) => {
+    try {
+      const response = await fetch(path, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  },
+};
 
 const browserDependencies: WebNotificationDependencies = {
   isSupported: () => 'Notification' in window && 'serviceWorker' in navigator,
@@ -69,6 +94,14 @@ const browserDependencies: WebNotificationDependencies = {
     return () => navigator.serviceWorker.removeEventListener('message', listener);
   },
   openTarget: runNotificationOpenHandler,
+  announceReady: () => {
+    void navigator.serviceWorker.ready.then((ready) =>
+      ready.active?.postMessage({ type: 'emdash-web-notification-ready' })
+    );
+  },
+  // pushManager.subscribe needs an active worker, which `register` alone does not guarantee.
+  syncPush: async () =>
+    syncPushSubscription(await navigator.serviceWorker.ready, pushClientDependencies),
 };
 
 let controller: ReturnType<typeof createWebNotificationController> | null = null;

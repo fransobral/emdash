@@ -11,6 +11,7 @@
  *   EMDASH_WEB_HOST      bind address (default 127.0.0.1)
  *   EMDASH_WEB_TOKEN     access token; auto-generated and printed when unset
  *   EMDASH_WEB_DATA_DIR  user-data directory (default ~/.emdash-web)
+ *   EMDASH_WEB_VAPID_SUBJECT  Web Push VAPID contact (mailto: or https: URL)
  *   EMDASH_WEB_APP_DIR   app root hosting out/main worker bundles
  *   EMDASH_WEB_PREVIEW_ORIGIN      public origin of the local preview proxy
  *                                  (e.g. https://preview.example.com); unset disables it
@@ -47,6 +48,7 @@ import {
   INFRA_PORTS,
 } from './preview-proxy';
 import { createStaticHandler } from './static';
+import { createWebPushService } from './web-push';
 import { attachWireGateway } from './ws-gateway';
 
 const here = resolve(fileURLToPath(import.meta.url), '..');
@@ -144,6 +146,17 @@ async function main(): Promise<void> {
     console.warn('[emdash-web] background tasks failed to start:', error);
   }
 
+  // Web Push: fan out agent notifications to subscribed PWAs while the app is closed.
+  const webPush = createWebPushService({
+    dataDir: DATA_DIR,
+    subject: process.env.EMDASH_WEB_VAPID_SUBJECT,
+    logger: {
+      info: (message, context) => console.log(`[emdash-web] ${message}`, context ?? ''),
+      warn: (message, context) => console.warn(`[emdash-web] ${message}`, context ?? ''),
+    },
+  });
+  services.notifications.registerSink(webPush.sink());
+
   const staticHandler = createStaticHandler(join(here, 'web'));
   const passwordAuth = createPasswordAuth({ password: PASSWORD, secret: TOKEN });
   const bridgeHandler = createBridgeHandler({
@@ -172,6 +185,10 @@ async function main(): Promise<void> {
       return;
     }
     if (passwordAuth.requireAuthentication(req, res)) return;
+    if (req.url?.startsWith('/api/push/')) {
+      void webPush.handle(req, res);
+      return;
+    }
     if (req.url?.startsWith('/preview/')) {
       void previewOpen(req, res).then((handled) => {
         if (handled) return;

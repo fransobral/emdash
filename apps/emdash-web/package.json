@@ -26,11 +26,14 @@
     "@emdash/wire": "workspace:*",
     "better-sqlite3": "^12.6.0",
     "node-pty": "1.1.0",
-    "ws": "^8.18.0"
+    "web-push": "^3.6.7",
+    "ws": "^8.18.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^24.13.0",
+    "@types/web-push": "^3.6.4",
     "@types/ws": "^8.5.0",
     "@vitejs/plugin-react": "^4.7.0",
     "buffer": "^6.0.3",

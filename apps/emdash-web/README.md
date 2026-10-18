@@ -65,6 +65,26 @@ Installation and service workers require a secure context: `localhost` works for
 internet access must be served through HTTPS. The installed shell can open offline, but projects,
 terminals, and agents still require a live connection to the Emdash Web server.
 
+### Notificaciones push
+
+Emdash Web envía notificaciones Web Push reales (VAPID + `web-push`), así que llegan aunque la app
+esté cerrada o en segundo plano. El servidor genera una vez el par de claves VAPID en
+`DATA_DIR/web-push-vapid.json` y guarda las suscripciones en
+`DATA_DIR/web-push-subscriptions.json` (ambos con modo 0600). Se envía un push por cada aviso de
+agente (`agent-complete` / `agent-attention`) que respete los ajustes de notificaciones
+(`enabled` y `osNotifications`); las suscripciones que responden 404/410 se eliminan solas.
+
+- Al conceder el permiso, la app se suscribe y vuelve a sincronizar la suscripción en cada arranque.
+  Mientras hay una suscripción activa la página no dispara además su propia notificación local.
+- Si la app está enfocada y visible, el service worker omite la notificación del sistema.
+- Endpoints (requieren sesión como el resto de la API): `GET /api/push/public-key`,
+  `POST /api/push/subscribe`, `POST /api/push/unsubscribe`.
+- `EMDASH_WEB_VAPID_SUBJECT` (opcional) fija el contacto VAPID (`mailto:` o `https:`).
+- **iOS / iPadOS (16.4+)**: solo funciona con la app instalada en la pantalla de inicio
+  (Safari → Compartir → Añadir a pantalla de inicio) y abierta desde ese icono al conceder el
+  permiso. iOS no soporta botones de acción en las notificaciones.
+- Requiere HTTPS (p. ej. el túnel de Cloudflare).
+
 Configuration via environment variables:
 
 | Variable | Default | Description |
