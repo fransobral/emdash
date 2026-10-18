@@ -37,6 +37,7 @@ export type ChatTranscriptProps = Pick<
   ChatViewOptions,
   | 'stickToBottom'
   | 'pinUserMessages'
+  | 'compact'
   | 'composer'
   | 'composerPlacement'
   | 'contentOverlay'
@@ -85,6 +86,7 @@ export function ChatTranscript(props: ChatTranscriptProps): React.ReactElement {
       contentOverlay: p.contentOverlay,
       stickToBottom: p.stickToBottom,
       pinUserMessages: p.pinUserMessages,
+      compact: p.compact,
       class: p.class,
       contentClass: p.contentClass,
       commands: p.commands ?? {},
@@ -105,8 +107,9 @@ export function ChatTranscript(props: ChatTranscriptProps): React.ReactElement {
       view.dispose();
       viewRef.current = null;
     };
+    // `compact` is read once per view, so crossing the phone breakpoint recreates it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [props.compact]);
 
   // Swap the underlying ChatState when props.state identity changes (setModel path).
   // The view handle, composer slot, and commands remain stable across swaps.

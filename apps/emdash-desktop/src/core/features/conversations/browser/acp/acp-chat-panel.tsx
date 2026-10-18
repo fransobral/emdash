@@ -42,6 +42,7 @@ import {
   getRegisteredTaskData,
   getTaskStore,
 } from '@core/features/tasks/api/browser/task-state/task-selectors';
+import { getTaskComposition } from '@core/features/workbench/api/browser/task-composition-selectors';
 import { openModal } from '@core/manifests/browser/modal-api';
 import { projectAvailabilityUi } from '@core/manifests/browser/project-availability-ui';
 import { openExternal } from '@core/primitives/desktop-host/browser/host-client';
@@ -49,6 +50,7 @@ import { issueMentionToken, parseIssueMentionToken } from '@core/primitives/issu
 import { resolveIssueMentionSource } from '@core/primitives/issues/api/issue-context';
 import { linkedIssueMentionName, type LinkedIssue } from '@core/primitives/linked-issues/api';
 import { log } from '@core/primitives/logging/browser/logger';
+import { useMobileViewport } from '@core/primitives/styling/browser/use-mobile-viewport';
 import { usePaneContext } from '@core/primitives/workbench-shell/browser/tabs/pane-context';
 import { AcpAgentsTray } from './acp-agents-tray';
 import type { AcpChatStore, AcpPromptAttachment } from './acp-chat-store';
@@ -59,6 +61,7 @@ import {
   toAcpImageAttachmentMimeType,
   uploadDroppedFile,
 } from './acp-dropped-file';
+import { permissionDetailFor } from './acp-permission-detail';
 import { buildIssueMentionHiddenContext } from './issue-mention-context';
 import { localPreviewHref } from './local-preview-link';
 import { createTranscriptFileCommands } from './transcript-file-commands';
@@ -107,12 +110,18 @@ function issueMatchesQuery(issue: LinkedIssue, query: string): boolean {
 
 /** Map an AcpPermissionRequest to the ComposerPermissionRequest shape the UI expects. */
 function toComposerPermission(
-  req: AcpChatStore['permissionQueue'][number] | undefined
+  req: AcpChatStore['permissionQueue'][number] | undefined,
+  context: { agentName?: string; projectName?: string } = {}
 ): ComposerPermissionRequest | null {
   if (!req) return null;
+  const detail = permissionDetailFor(req.toolCall);
   return {
     requestId: req.requestId,
     title: req.title,
+    actionKind: detail.actionKind,
+    command: detail.command,
+    agentName: context.agentName,
+    projectName: context.projectName,
     options: req.options.map((o) => ({
       optionId: o.optionId,
       name: o.name,
@@ -208,6 +217,7 @@ const ComposerForStore = observer(function ComposerForStore({
   composerSlot: HTMLElement;
   onViewerOpen: (src?: string, alt?: string) => void;
 }) {
+  const isMobile = useMobileViewport();
   const editorApiRef = useRef<PromptEditorRef | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachments = store.draftAttachments.map(toComposerAttachment);
@@ -575,7 +585,14 @@ const ComposerForStore = observer(function ComposerForStore({
   );
 
   const a = store.affordances;
-  const permissionRequest = toComposerPermission(store.permissionQueue[0]);
+  const agentName = agentOptions.find((option) => option.id === providerId)?.name;
+  const projectName = useObserver(
+    () => projectData(getProjectStore(store.projectId))?.name ?? undefined
+  );
+  const permissionRequest = toComposerPermission(store.permissionQueue[0], {
+    agentName,
+    projectName,
+  });
 
   return createPortal(
     <>
@@ -600,6 +617,7 @@ const ComposerForStore = observer(function ComposerForStore({
           permissionRequest={permissionRequest}
           permissionQueueCount={store.permissionQueue.length}
           onResolvePermission={handleResolvePermission}
+          permissionPresentation={isMobile ? 'sheet' : 'band'}
           queuedPrompts={store.queuedPrompts}
           onEditQueuedPrompt={(id, text) => store.editQueuedPrompt(id, text)}
           onDeleteQueuedPrompt={(id) => store.deleteQueuedPrompt(id)}
@@ -685,6 +703,7 @@ export const AcpChatPanelBody = observer(function AcpChatPanelBody({
 }: {
   store: AcpChatStore;
 }) {
+  const isMobile = useMobileViewport();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<ChatView | null>(null);
   const [composerSlot, setComposerSlot] = useState<HTMLElement | null>(null);
@@ -819,6 +838,12 @@ export const AcpChatPanelBody = observer(function AcpChatPanelBody({
       classifyLink: fileCommands?.classifyLink,
       resolveLinkHref: IS_WEB_BROWSER ? localPreviewHref : undefined,
       onOpenFile: fileCommands?.onOpenFile,
+      onViewChanges: store
+        ? () =>
+            getTaskComposition(store.projectId, store.taskId)?.chrome.commands.openSidebarTab(
+              'changes'
+            )
+        : undefined,
       onClickMention: (arg: Parameters<NonNullable<ChatCommands['onClickMention']>>[0]) => {
         if (!store) return;
         if (arg.kind === 'file') {
@@ -876,6 +901,7 @@ export const AcpChatPanelBody = observer(function AcpChatPanelBody({
         contentOverlay
         stickToBottom
         pinUserMessages
+        compact={isMobile}
         onReady={handleReady}
         commands={transcriptCommands}
         onAtBottomChange={setAtBottom}
