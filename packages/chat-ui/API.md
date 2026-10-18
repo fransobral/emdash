@@ -217,6 +217,7 @@ host manages their lifetimes independently.
 | `composer` | `'slot' \| 'none'` | `'none'` | When `'slot'`: renders a sticky bottom slot; internal ResizeObserver drives `padBottom`. Use `view.composerSlot` to portal content into it. |
 | `stickToBottom` | `boolean` | `false` | Auto-scroll to bottom as content streams in. |
 | `pinUserMessages` | `boolean` | `false` | Pin the active turn's user message to the top while scrolling. |
+| `compact` | `boolean` | `false` | Phone density. Contiguous tool calls collapse into one-line summary rows (tap to expand the regular detail rows), settled turns that changed files gain a "files changed" card (reports taps via `commands.onViewChanges`), user messages become right-aligned bubbles and a running indicator with elapsed time shows while the agent works. Read once at creation; recreate the view to switch. |
 | `class` | `string` | — | Extra class on the scroll container. |
 | `contentClass` | `string` | — | Class for the centered content column. |
 | `padTop` | `number` | `0` | Top padding (px) baked into the virtualizer coordinate space. |
@@ -250,6 +251,7 @@ Callbacks injected by the host to respond to user actions:
 | Callback | Signature | Description |
 | --- | --- | --- |
 | `onOpenFile` | `({ path, itemId, source }) => void` | User clicked a file path (diff, file-op, resource-link, prose-link). |
+| `onViewChanges` | `({ itemId }) => void` | User tapped the compact "files changed" card (only rendered when `compact` is on). |
 | `onViewImage` | `({ attachment, itemId, source }) => void` | User clicked an image thumbnail in a user message. |
 | `onStop` | `({ itemId }) => void` | User clicked the stop button during generation. |
 | `classifyLink` | `(href) => { kind: 'workspace-file'; path: string } \| { kind: 'external' }` | Classify a markdown `href` at render time (must be synchronous). |

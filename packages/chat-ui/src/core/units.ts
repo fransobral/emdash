@@ -120,6 +120,12 @@ export type SegmentCtx = {
   plan: () => PlanState | null;
   pendingToolCallIds: () => Set<string>;
   terminalOutput: (terminalId: string) => TerminalOutputSnapshot | null;
+  /**
+   * Compact (phone) density. Changes structure only: contiguous tool calls
+   * collapse into `tool-run` summary rows and settled turns gain a change card.
+   * Fixed for the lifetime of a view; hosts remount the view to switch.
+   */
+  compact?: boolean;
 };
 
 // ── UnitDef ───────────────────────────────────────────────────────────────────
