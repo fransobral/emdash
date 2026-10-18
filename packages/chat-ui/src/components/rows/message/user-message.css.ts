@@ -69,6 +69,15 @@ export const card = recipe({
 });
 
 /**
+ * Compact (phone) bubble: right-aligned, tail corner at the bottom right.
+ * Width is set inline from the measured text width (see UserMessageCard).
+ */
+export const cardCompact = style({
+  marginLeft: 'auto',
+  borderRadius: '18px 18px 4px 18px',
+});
+
+/**
  * Stop button — absolutely positioned top-right of the user message card.
  *
  * Isolated reveal: opacity 0 by default; revealed only when `userCardGroup`

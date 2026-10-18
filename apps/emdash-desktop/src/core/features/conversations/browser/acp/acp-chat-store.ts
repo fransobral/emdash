@@ -1,6 +1,7 @@
 import type { ChatContext, ChatImageAttachment, ChatState, ChatView } from '@emdash/chat-ui';
 import { formatHostRef } from '@emdash/core/primitives/host/api';
 import type {
+  AcpPermissionRequest,
   AgentState,
   PromptAttachment,
   PromptInput,
@@ -101,6 +102,7 @@ export type AcpAttachmentUploadInput = AcpAttachmentUploadMetadata &
 type PermissionQueueItem = {
   requestId: string;
   title: string;
+  toolCall: AcpPermissionRequest['toolCall'];
   options: Array<{ optionId: string; name: string; kind: string }>;
 };
 
@@ -373,6 +375,7 @@ export class AcpChatStore {
     return (this.session?.sessionState.current().pendingPermissions ?? []).map((request) => ({
       requestId: request.requestId,
       title: request.toolCall.title,
+      toolCall: request.toolCall,
       options: request.options.map((option) => ({
         optionId: option.optionId,
         name: option.name,

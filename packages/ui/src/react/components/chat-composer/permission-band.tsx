@@ -16,6 +16,7 @@ import { cx } from '@styles/utilities/cx';
 import { ShieldAlertIcon } from 'lucide-react';
 import * as React from 'react';
 import { SplitButton, type SplitButtonOption } from '@/react/primitives/split-button';
+import type { PermissionActionKind } from './permission-options';
 import { composerThemeScope } from './composer-contract.css';
 import * as styles from './permission-band.css';
 
@@ -32,6 +33,17 @@ export type ComposerPermissionRequest = {
   /** Pre-formatted action verb, e.g. "Read a File", "Execute". */
   title: string;
   options: ComposerPermissionOption[];
+  /** Mobile sheet only: what kind of action the agent wants to take. */
+  actionKind?: PermissionActionKind;
+  /** Mobile sheet only: display name of the requesting agent, e.g. "Codex". */
+  agentName?: string;
+  /** Mobile sheet only: project (and optionally branch) the agent is working in. */
+  projectName?: string;
+  branchName?: string;
+  /** Mobile sheet only: the exact command, path, query or tool input being approved. */
+  command?: string;
+  /** Mobile sheet only: why the agent asked, when the provider supplied a reason. */
+  reason?: string;
 };
 
 export interface PermissionBandProps {

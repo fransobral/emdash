@@ -61,6 +61,12 @@ export type ChatViewOptions = {
   contentOverlay?: boolean;
   stickToBottom?: boolean;
   pinUserMessages?: boolean;
+  /**
+   * Phone-density rendering (tool-call summary rows, files-changed card, bubble
+   * user messages, running indicator). Fixed at creation; recreate the view to
+   * switch. Desktop leaves this off.
+   */
+  compact?: boolean;
   /** Extra class for the scroll container. */
   class?: string;
   /** Class for the centered content column. */
@@ -256,6 +262,7 @@ export function createChatView(opts: ChatViewOptions): ChatView {
         onActiveUserMessageVisibilityChange={onActiveUserMessageVisibilityChange}
         controls={controls}
         pinUserMessages={opts.pinUserMessages}
+        compact={opts.compact}
         composer={opts.composer}
         composerPlacement={opts.composerPlacement}
         contentOverlay={opts.contentOverlay}

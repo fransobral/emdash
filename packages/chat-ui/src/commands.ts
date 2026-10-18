@@ -88,6 +88,12 @@ export type ChatCommands = {
   onViewMermaid?: (arg: { chart: string; blockId: string; source: 'mermaid-block' }) => void;
 
   /**
+   * Called when the user taps the compact "N archivos cambiados" card. The host
+   * decides where changes live (for example the task's Changes surface).
+   */
+  onViewChanges?: (arg: { itemId: string }) => void;
+
+  /**
    * Called when the user clicks a resolved @-mention chip in the transcript.
    * `id` is the stable identifier (e.g. a file path); `label` is the raw @-token text.
    */

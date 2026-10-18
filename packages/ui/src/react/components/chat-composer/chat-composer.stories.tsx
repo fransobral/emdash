@@ -792,6 +792,46 @@ export const PermissionBandOverflowStates: Story = {
   render: () => <PermissionBandOverflowStatesDemo />,
 };
 
+function PermissionSheetDemo() {
+  const [resolved, setResolved] = useState<string | null>(null);
+  return (
+    <Box className={cx(s.mxAuto)} width="full" style={{ maxWidth: 390 }}>
+      <ChatComposer
+        onSubmit={() => {}}
+        permissionPresentation="sheet"
+        permissionRequest={
+          resolved
+            ? null
+            : {
+                requestId: 'sheet-1',
+                title: 'Execute',
+                actionKind: 'execute',
+                agentName: 'Codex',
+                projectName: 'aurora-mcp',
+                branchName: 'feat/f5-consultas-lectura',
+                command: 'git push origin feat/f5-consultas-lectura',
+                reason:
+                  'Subir la rama para abrir el PR. Toca el remoto origin, no la rama principal.',
+                options: [
+                  { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
+                  { optionId: 'allow-always', name: 'Always allow git push', kind: 'allow_always' },
+                  { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
+                ],
+              }
+        }
+        onResolvePermission={setResolved}
+      />
+      {resolved && <p>Resolved with: {resolved}</p>}
+    </Box>
+  );
+}
+
+/** Phone presentation: a modal bottom sheet; dismissing it falls back to the inline band. */
+export const PermissionSheetMobile: Story = {
+  render: () => <PermissionSheetDemo />,
+  parameters: { viewport: { defaultViewport: 'mobile1' } },
+};
+
 function ContextUsageDemo({ usage }: { usage: ContextUsage }) {
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-5');
 

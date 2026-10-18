@@ -47,9 +47,12 @@ import type {
   ChatThinking,
   SyntheticItem,
   ThinkingGroupItem,
+  ToolNode,
+  ToolRunItem,
   TranscriptTurn,
 } from '@/model';
 import type { ToolHeaderState } from './tool-header-state';
+import { collectRunnableTools, summarizeTurnChanges } from './tool-run';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +67,10 @@ function thinkingGroup(steps: readonly ChatThinking[]): ThinkingGroupItem {
     id: `${steps[0].id}:thinking-group`,
     steps,
   };
+}
+
+function toolRun(tools: readonly ToolNode[]): ToolRunItem {
+  return { kind: 'tool-run', id: `${tools[0].id}:tool-run`, tools };
 }
 
 // ── ItemNode ──────────────────────────────────────────────────────────────────
@@ -132,6 +139,14 @@ export function flattenTier(
     const items = turn.items as readonly ChatItem[];
     for (let i = 0; i < items.length; ) {
       const item = items[i];
+      if (ctx.compact) {
+        const run = takeToolRun(items, i);
+        if (run) {
+          processItem(toolRun(run.tools));
+          i = run.end;
+          continue;
+        }
+      }
       if (item.kind !== 'thinking') {
         processItem(item);
         i += 1;
@@ -145,8 +160,13 @@ export function flattenTier(
       i = end;
     }
 
-    if (ctx.active && shouldShowWorking(items)) {
+    if (ctx.active && (ctx.compact || shouldShowWorking(items))) {
       processItem({ kind: 'working', id: `${turn.id}:working` });
+    }
+
+    if (ctx.compact && !ctx.active) {
+      const changes = summarizeTurnChanges(items);
+      if (changes) processItem({ kind: 'turn-changes', id: `${turn.id}:changes`, ...changes });
     }
 
     if (!ctx.active && turn.outcome && turn.outcome.kind !== 'done') {
@@ -155,6 +175,26 @@ export function flattenTier(
   }
 
   return out;
+}
+
+/**
+ * Gather the contiguous tool calls starting at `start` (core `tool-group`
+ * wrappers are folded away). Returns null when the item at `start` is not a
+ * runnable tool call.
+ */
+function takeToolRun(
+  items: readonly ChatItem[],
+  start: number
+): { tools: ToolNode[]; end: number } | null {
+  const tools: ToolNode[] = [];
+  let end = start;
+  while (end < items.length) {
+    const leaves = collectRunnableTools(items[end]);
+    if (!leaves) break;
+    tools.push(...leaves);
+    end += 1;
+  }
+  return end > start ? { tools, end } : null;
 }
 
 function shouldShowWorking(items: readonly ChatItem[]): boolean {

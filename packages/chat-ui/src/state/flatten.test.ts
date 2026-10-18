@@ -297,3 +297,93 @@ describe('collectUserTurnUnits', () => {
     expect(indices).toEqual([0, 2]);
   });
 });
+
+describe('flattenTier compact mode', () => {
+  const compactCtx = { ...segCtx, compact: true } as unknown as SegmentCtx;
+  const SEGMENTERS = {
+    ...STUB_SEGMENTERS,
+    'tool-run': passthrough('tool-run'),
+    'turn-changes': passthrough('turn-changes'),
+    working: passthrough('working'),
+  };
+
+  const toolNode = (kind: string, id: string, extra: Record<string, unknown> = {}) =>
+    ({
+      kind,
+      id,
+      seq: 0,
+      toolCallId: id,
+      title: id,
+      status: 'done',
+      ...extra,
+    }) as unknown as ChatItem;
+
+  it('collapses contiguous tool calls (incl. core tool-groups) into one tool-run unit', () => {
+    const group = {
+      kind: 'tool-group',
+      id: 'g',
+      seq: 0,
+      label: 'x',
+      groupKind: 'tool-run',
+      status: 'done',
+      children: [
+        toolNode('read-tool-call', 'r1'),
+        toolNode('execute-tool-call', 'e1', { command: 'ls' }),
+      ],
+    } as unknown as ChatItem;
+    const units = flattenTier(
+      [turn('t', 0, userMsg('u'), group, toolNode('read-tool-call', 'r2'))],
+      compactCtx,
+      SEGMENTERS
+    );
+    expect(units.map((u) => u.kind)).toEqual(['message', 'tool-run']);
+    const run = units[1].data as { tools: { id: string }[]; id: string };
+    expect(run.tools.map((t) => t.id)).toEqual(['r1', 'e1', 'r2']);
+    expect(run.id).toBe('r1:tool-run');
+  });
+
+  it('splits runs around non-tool items', () => {
+    const units = flattenTier(
+      [
+        turn(
+          't',
+          0,
+          toolNode('read-tool-call', 'r1'),
+          userMsg('m'),
+          toolNode('read-tool-call', 'r2')
+        ),
+      ],
+      compactCtx,
+      SEGMENTERS
+    );
+    expect(units.map((u) => u.kind)).toEqual(['tool-run', 'message', 'tool-run']);
+  });
+
+  it('adds a files-changed card to settled turns that edited files', () => {
+    const edit = toolNode('modify-file-tool-call', 'm1', {
+      path: 'a.ts',
+      oldText: 'x',
+      newText: 'y',
+    });
+    const units = flattenTier([turn('t', 0, edit)], compactCtx, SEGMENTERS);
+    expect(units.map((u) => u.kind)).toEqual(['tool-run', 'turn-changes']);
+  });
+
+  it('shows the running indicator for any active turn, without the changes card', () => {
+    const edit = toolNode('modify-file-tool-call', 'm1', {
+      path: 'a.ts',
+      oldText: 'x',
+      newText: 'y',
+    });
+    const units = flattenTier([turn('t', 0, edit)], { ...compactCtx, active: true }, SEGMENTERS);
+    expect(units.map((u) => u.kind)).toEqual(['tool-run', 'working']);
+  });
+
+  it('leaves non-compact flattening unchanged', () => {
+    const units = flattenTier([turn('t', 0, toolNode('read-tool-call', 'r1'))], segCtx, {
+      ...SEGMENTERS,
+      'read-tool-call': passthrough('read-tool-call'),
+    });
+    expect(units.map((u) => u.kind)).toEqual(['read-tool-call']);
+  });
+});

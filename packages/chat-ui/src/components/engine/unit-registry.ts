@@ -33,13 +33,16 @@ import {
 } from '@components/rows/tools/file-op/file-op.def';
 import { subagentFromItem, subagentUnitDef } from '@components/rows/tools/subagent/subagent.def';
 import { toolGroupUnitDef } from '@components/rows/tools/tool-group/tool-group.def';
+import { toolRunUnitDef, type ToolRunData } from '@components/rows/tools/tool-run/tool-run.def';
 import { toolFromItem, toolUnitDef } from '@components/rows/tools/tool/tool.def';
+import { turnChangesUnitDef } from '@components/rows/turn-changes/turn-changes.def';
 import { turnOutcomeUnitDef } from '@components/rows/turn-outcome/turn-outcome.def';
 import { workingUnitDef } from '@components/rows/working/working.def';
 import type { GroupChrome, ItemSegmenter, SegmentCtx, SegmentItem, UnitDef } from '@core/units';
 import { unit } from '@core/units';
 import type { ItemNode } from '@state/flatten';
 import { deriveToolHeaderState } from '@state/tool-header-state';
+import { summarizeToolRun, type LeafToolNode } from '@state/tool-run';
 import type {
   ChatDiff,
   ChatExecute,
@@ -52,6 +55,8 @@ import type {
   SyntheticItem,
   ThinkingGroupItem,
   ToolNode,
+  ToolRunItem,
+  TurnChangesItem,
 } from '@/model';
 import { ROW_INSET_X } from './row-metrics';
 
@@ -106,7 +111,7 @@ const messageSegmenter: ItemSegmenter = {
   segment: (item, ctx) => {
     const data = messageFromItem(item as ChatMessage, ctx);
     const u = unit('message', item, data, { key: 'self' });
-    u.chrome = data.role === 'user' ? USER_CHROME : COMPOSITE_CHROME;
+    u.chrome = data.role === 'user' && !ctx.compact ? USER_CHROME : COMPOSITE_CHROME;
     return [u];
   },
 };
@@ -169,6 +174,24 @@ function toolNodeSegment(kind: ToolNode['kind']): ItemSegmenter {
   };
 }
 
+/** Compact-only: summary lines whose details are the regular per-tool presentation data. */
+const toolRunSegmenter: ItemSegmenter = {
+  kind: 'tool-run',
+  chrome: COMPOSITE_CHROME,
+  segment(item, ctx) {
+    const run = item as ToolRunItem;
+    const lines = summarizeToolRun(run.tools as readonly LeafToolNode[], ctx.pendingToolCallIds());
+    const data: ToolRunData = {
+      id: run.id,
+      lines: lines.map(({ members, ...line }) => ({
+        ...line,
+        details: members.map((member) => toUnitData(member, ctx)),
+      })),
+    };
+    return [unit('tool-run', run, data, { key: 'self' })];
+  },
+};
+
 // ── SEGMENTERS ────────────────────────────────────────────────────────────────
 
 /**
@@ -206,6 +229,12 @@ export const SEGMENTERS: Record<string, ItemSegmenter> = {
   'create-plan-tool-call': toolNodeSegment('create-plan-tool-call'),
   'unknown-tool-call': toolNodeSegment('unknown-tool-call'),
   'tool-group': toolNodeSegment('tool-group'),
+  'tool-run': toolRunSegmenter,
+  'turn-changes': nativePassthrough<TurnChangesItem>(
+    'turn-changes',
+    (item) => item,
+    COMPOSITE_CHROME
+  ),
   working: nativePassthrough<SyntheticItem>('working', (item) => item, COMPOSITE_CHROME),
   'turn-outcome': nativePassthrough<SyntheticItem>(
     'turn-outcome',
@@ -237,6 +266,8 @@ export const UNIT_REGISTRY: Record<string, RegistryUnitDef> = {
   'resource-link': resourceLinkUnitDef as unknown as RegistryUnitDef,
   // Hierarchical composite: parent tool call with nested children
   'tool-group': toolGroupUnitDef as unknown as RegistryUnitDef,
+  'tool-run': toolRunUnitDef as unknown as RegistryUnitDef,
+  'turn-changes': turnChangesUnitDef as unknown as RegistryUnitDef,
   working: workingUnitDef as unknown as RegistryUnitDef,
   'turn-outcome': turnOutcomeUnitDef as unknown as RegistryUnitDef,
 };

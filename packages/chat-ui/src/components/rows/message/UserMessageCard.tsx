@@ -1,4 +1,5 @@
 import { useCommands } from '@components/contexts/CommandsContext';
+import { useCompact } from '@components/contexts/CompactContext';
 import { useTurnState } from '@components/contexts/TurnStateContext';
 import { BlockStackView } from '@components/primitives/BlockStackView';
 import { clipTrackedHeight, isCardAnimating } from '@components/primitives/card-clip';
@@ -19,6 +20,7 @@ import {
   attachThumb,
   attachThumbBtn,
   card,
+  cardCompact,
   cardFadeOverlay,
   cardRoot,
   cardVars,
@@ -29,6 +31,7 @@ import {
 export function UserMessageCard(props: { data: ChatMessage; ctx: RenderCtx; vars: MessageVars }) {
   const commands = useCommands();
   const turn = useTurnState();
+  const compact = useCompact();
   const mCtx = () => props.ctx.measureCtx?.();
 
   const isCurrent = () => turn.currentMessageId() === props.data.id;
@@ -75,6 +78,18 @@ export function UserMessageCard(props: { data: ChatMessage; ctx: RenderCtx; vars
     return aH + s.height + 2 * props.vars.userCardPadY + 2 * props.vars.cardBorder;
   });
 
+  /**
+   * Compact bubble: hug the text and sit on the right. Height is untouched; the
+   * width never exceeds the measured column so wrapping stays as measured.
+   */
+  const bubbleWidth = (): number | undefined => {
+    const ctx = mCtx();
+    const layout = stack();
+    if (!compact() || !ctx || !layout || props.data.attachments?.length) return undefined;
+    const chromeX = 2 * props.vars.userCardPadX + 2 * props.vars.cardBorder;
+    return Math.min(ctx.width, Math.ceil(layout.width) + chromeX);
+  };
+
   const isExpanded = () => mCtx()?.expandedId === props.data.id;
   const maxH = () => (isExpanded() ? props.vars.expandedMaxH : props.vars.collapsedMaxH);
   const clampedH = () => Math.min(fullContentH(), maxH());
@@ -94,7 +109,9 @@ export function UserMessageCard(props: { data: ChatMessage; ctx: RenderCtx; vars
     <div
       data-user-card={props.data.id}
       class={`${card({ state: isOverflowing() && !isExpanded() ? 'overflowing' : 'static', current: showStop() })} ${cardRoot} ${userCardGroup}`}
+      classList={{ [cardCompact]: compact() }}
       style={{
+        ...(bubbleWidth() !== undefined ? { width: `${bubbleWidth()}px` } : {}),
         ...assignInlineVars(cardVars, pxTokens({ ...styleVars(), height: cardH() })),
         // Force overflow:hidden while the UnitRow tween is in flight to avoid
         // a transient scrollbar mid-animation; restore auto only when expanded

@@ -326,7 +326,40 @@ export type TurnOutcomeItem = {
   outcome: TranscriptTurnOutcome;
 };
 
-export type SyntheticItem = ThinkingGroupItem | WorkingItem | TurnOutcomeItem;
+/**
+ * Compact-mode only. Presentation-only run of contiguous tool calls that the
+ * flattening pass collapses into per-category summary rows ("Leyó 4 archivos").
+ * `tools` are leaf tool nodes in protocol order (core `tool-group` wrappers are
+ * flattened away). The disclosure still reveals the regular detailed rows.
+ */
+export type ToolRunItem = {
+  kind: 'tool-run';
+  /** Derived from the first tool so it stays stable while the run grows. */
+  id: string;
+  tools: readonly ToolNode[];
+};
+
+/** One file in a turn's change summary. */
+export type TurnChangeFile = { path: string; added: number; removed: number };
+
+/**
+ * Compact-mode only. "N archivos cambiados +A −D" card appended to a settled
+ * turn that produced file changes.
+ */
+export type TurnChangesItem = {
+  kind: 'turn-changes';
+  id: string;
+  files: readonly TurnChangeFile[];
+  added: number;
+  removed: number;
+};
+
+export type SyntheticItem =
+  | ThinkingGroupItem
+  | WorkingItem
+  | TurnOutcomeItem
+  | ToolRunItem
+  | TurnChangesItem;
 
 export type ChatItem =
   | TranscriptItem

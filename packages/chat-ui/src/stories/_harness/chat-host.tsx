@@ -69,6 +69,8 @@ export type ChatHostProps = {
   mentionProvider?: MentionProvider;
   /** Optional command provider — when supplied, /token text renders as chips. */
   commandProvider?: CommandProvider;
+  /** Phone-density rendering (read once at mount). */
+  compact?: boolean;
 };
 
 /**
@@ -157,6 +159,7 @@ export function ChatHost(props: ChatHostProps) {
         state={state}
         stickToBottom
         pinUserMessages
+        compact={props.compact}
         commands={() => commands()}
       />
     </StoryViewport>
