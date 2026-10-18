@@ -1,6 +1,6 @@
 import { Dialog } from '@emdash/ui/react/primitives';
 import { observer } from 'mobx-react-lite';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useConnectedIssueProviders } from '@core/features/integrations/api/browser/use-connected-issue-providers';
 import {
   firstAvailableProjectId,
@@ -47,11 +47,14 @@ export const CreateTaskModal = observer(function CreateTaskModal({
   strategy: initialStrategy = 'from-branch',
   initialPR,
   initialWorkspaceId,
+  initialPrompt,
 }: {
   projectId?: string;
   strategy?: 'from-branch' | 'from-issue' | 'from-pull-request';
   initialPR?: PullRequest;
   initialWorkspaceId?: string;
+  /** Prefills the initial conversation prompt (e.g. from the mobile home composer). */
+  initialPrompt?: string;
 }) {
   const { complete } = useModalController('taskModal');
   const selectedProjectId = useDefaultProjectId(projectId);
@@ -100,6 +103,11 @@ export const CreateTaskModal = observer(function CreateTaskModal({
     undefined,
     autoApproveByDefault
   );
+  const { setPrompt } = initialConversation;
+  useEffect(() => {
+    if (initialPrompt) setPrompt(initialPrompt);
+    // oxlint-disable-next-line react/exhaustive-deps
+  }, []); // seed once on mount
   const { navigate } = useNavigate();
 
   const { handleCreateTask, canCreate } = useCreateTaskCallback({

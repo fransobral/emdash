@@ -1,19 +1,38 @@
 import { describe, expect, it } from 'vitest';
 import {
   mobileSurfaceFromChrome,
-  mobileTaskSurfaceItems,
+  mobileTaskOverflowItems,
+  mobileTaskSegmentItems,
+  segmentForMobileSurface,
   sidebarTabForMobileSurface,
+  surfaceForMobileSegment,
 } from './mobile-task-surfaces';
 
 describe('mobile task surfaces', () => {
-  it('keeps the dense desktop panels behind five mutually exclusive mobile destinations', () => {
-    expect(mobileTaskSurfaceItems).toEqual([
-      { id: 'workspace', label: 'Workspace' },
-      { id: 'chats', label: 'Chats' },
-      { id: 'sessions', label: 'Sessions' },
-      { id: 'files', label: 'Files' },
-      { id: 'changes', label: 'Changes' },
+  it('exposes chat, changes and terminal as the three primary segments', () => {
+    expect(mobileTaskSegmentItems.map(({ id, label }) => ({ id, label }))).toEqual([
+      { id: 'chat', label: 'Chat' },
+      { id: 'changes', label: 'Cambios' },
+      { id: 'terminal', label: 'Terminal' },
     ]);
+  });
+
+  it('keeps files and conversations reachable from the overflow menu', () => {
+    expect(mobileTaskOverflowItems.map((item) => item.surface)).toEqual(['files', 'chats']);
+  });
+
+  it('maps segments to the existing surfaces and back', () => {
+    expect(surfaceForMobileSegment('chat')).toBe('workspace');
+    expect(surfaceForMobileSegment('changes')).toBe('changes');
+    expect(surfaceForMobileSegment('terminal')).toBe('sessions');
+    expect(segmentForMobileSurface('workspace')).toBe('chat');
+    expect(segmentForMobileSurface('sessions')).toBe('terminal');
+    expect(segmentForMobileSurface('changes')).toBe('changes');
+  });
+
+  it('highlights no segment while an overflow surface is open', () => {
+    expect(segmentForMobileSurface('files')).toBeNull();
+    expect(segmentForMobileSurface('chats')).toBeNull();
   });
 
   it('maps file surfaces to the existing sidebar store without inventing parallel state', () => {

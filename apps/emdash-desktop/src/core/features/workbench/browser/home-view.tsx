@@ -1,15 +1,19 @@
 import { menuItemBase } from '@emdash/ui/styles/recipes/menu-item';
 import { FolderOpen, Github, Plus, Server, type LucideIcon } from 'lucide-react';
+import { observer } from 'mobx-react-lite';
 import { motion } from 'motion/react';
 import { Fragment } from 'react';
+import { getProjectManagerStore } from '@core/features/projects/api/browser/stores/project-selectors';
 import { homeViewDef } from '@core/features/workbench/contributions/views';
 import { useOpenModal } from '@core/manifests/browser/modal-api';
 import { EmdashShimmerLogo } from '@core/primitives/app-identity/browser/emdash-shimmer-logo';
 import { Shortcut } from '@core/primitives/keybindings/browser/shortcut';
 import { useArrowKeyNavigation } from '@core/primitives/react-hooks/browser/use-arrow-key-navigation';
 import { cn } from '@core/primitives/styling/browser/cn';
+import { useMobileViewport } from '@core/primitives/styling/browser/use-mobile-viewport';
 import { useTheme } from '@core/primitives/theme/browser';
 import { defineViewRuntime } from '@core/primitives/views/react';
+import { MobileHome } from './mobile-home/mobile-home';
 
 const PROJECT_ACTIONS = [
   {
@@ -38,7 +42,7 @@ const PROJECT_ACTIONS = [
   },
 ] as const;
 
-export function HomeMainPanel() {
+export const HomeMainPanel = observer(function HomeMainPanel() {
   const openAddProjectModal = useOpenModal('addProjectModal');
   const { selectedIndex, setSelectedIndex } = useArrowKeyNavigation(
     PROJECT_ACTIONS.length,
@@ -48,6 +52,10 @@ export function HomeMainPanel() {
   );
   const { effectiveTheme } = useTheme();
   const isDark = effectiveTheme === 'emdark';
+  const isMobile = useMobileViewport();
+  const hasProjects = getProjectManagerStore().projects.size > 0;
+
+  if (isMobile && hasProjects) return <MobileHome />;
 
   return (
     <motion.div
@@ -82,7 +90,7 @@ export function HomeMainPanel() {
       </div>
     </motion.div>
   );
-}
+});
 
 function HomeProjectAction({
   label,
