@@ -76,7 +76,7 @@ agente (`agent-complete` / `agent-attention`) que respete los ajustes de notific
 
 - Al conceder el permiso, la app se suscribe y vuelve a sincronizar la suscripción en cada arranque.
   Mientras hay una suscripción activa la página no dispara además su propia notificación local.
-- Si la app está enfocada y visible, el service worker omite la notificación del sistema.
+- Si la app está enfocada y visible, el service worker muestra la notificación en silencio (iOS revoca la suscripción si un push no muestra nada).
 - Endpoints (requieren sesión como el resto de la API): `GET /api/push/public-key`,
   `POST /api/push/subscribe`, `POST /api/push/unsubscribe`.
 - `EMDASH_WEB_VAPID_SUBJECT` (opcional) fija el contacto VAPID (`mailto:` o `https:`).

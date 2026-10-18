@@ -78,13 +78,16 @@ describe('service worker push handling', () => {
     );
   });
 
-  it('skips the OS notification and messages the page when a visible client is focused', async () => {
+  it('still shows a silent notification and messages the page when a visible client is focused', async () => {
     const focused = client({ focused: true, visibilityState: 'visible' });
     const worker = loadWorker([client(), focused]);
 
     await dispatchPush(worker, PAYLOAD);
 
-    expect(worker.showNotification).not.toHaveBeenCalled();
+    expect(worker.showNotification).toHaveBeenCalledWith(
+      PAYLOAD.title,
+      expect.objectContaining({ silent: true, tag: PAYLOAD.tag })
+    );
     expect(focused.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'emdash-web-push-received', notificationId: 'n-1' })
     );
@@ -95,7 +98,10 @@ describe('service worker push handling', () => {
 
     await dispatchPush(worker, PAYLOAD);
 
-    expect(worker.showNotification).toHaveBeenCalledOnce();
+    expect(worker.showNotification).toHaveBeenCalledWith(
+      PAYLOAD.title,
+      expect.objectContaining({ silent: false })
+    );
   });
 
   it.each([

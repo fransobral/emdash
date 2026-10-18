@@ -85,7 +85,8 @@ function parsePushPayload(event) {
 
 async function handlePush(push) {
   const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  // The user is already looking at the app: the in-app feed covers it, so skip the OS banner.
+  // Safari/iOS revokes the subscription when a push shows no notification, so always show one.
+  // When the user is already looking at the app, keep it silent and tell the page instead.
   const visible = windows.find((client) => client.focused && client.visibilityState === 'visible');
   if (visible) {
     visible.postMessage({
@@ -93,12 +94,12 @@ async function handlePush(push) {
       notificationId: push.notificationId,
       target: push.target,
     });
-    return;
   }
   await self.registration.showNotification(push.title, {
     body: push.body,
     tag: push.tag,
-    renotify: true,
+    renotify: !visible,
+    silent: Boolean(visible),
     icon: NOTIFICATION_ICON,
     badge: NOTIFICATION_ICON,
     data: { type: OPEN_MESSAGE_TYPE, notificationId: push.notificationId, target: push.target },
