@@ -11,6 +11,22 @@ export interface TaskEnvContext {
   portSeed?: string;
 }
 
+export interface WorkspaceEnvContext {
+  /** Root checkout path of the project. */
+  projectPath: string;
+  defaultBranch?: string | null;
+  portSeed: string;
+}
+
+/** Env vars shared by every session; carries no task identity. */
+export function getWorkspaceEnvVars(ctx: WorkspaceEnvContext): Record<string, string> {
+  return {
+    EMDASH_ROOT_PATH: ctx.projectPath,
+    ...(ctx.defaultBranch ? { EMDASH_DEFAULT_BRANCH: ctx.defaultBranch } : {}),
+    EMDASH_PORT: String(getBasePort(ctx.portSeed)),
+  };
+}
+
 export function getTaskEnvVars(ctx: TaskEnvContext): Record<string, string> {
   const taskName = slugify(ctx.taskName) || 'task';
   const portSeed = ctx.portSeed || ctx.taskPath || ctx.taskId;
@@ -18,9 +34,11 @@ export function getTaskEnvVars(ctx: TaskEnvContext): Record<string, string> {
     EMDASH_TASK_ID: ctx.taskId,
     EMDASH_TASK_NAME: taskName,
     EMDASH_TASK_PATH: ctx.taskPath,
-    EMDASH_ROOT_PATH: ctx.projectPath,
-    ...(ctx.defaultBranch ? { EMDASH_DEFAULT_BRANCH: ctx.defaultBranch } : {}),
-    EMDASH_PORT: String(getBasePort(portSeed)),
+    ...getWorkspaceEnvVars({
+      projectPath: ctx.projectPath,
+      defaultBranch: ctx.defaultBranch,
+      portSeed,
+    }),
   };
 }
 

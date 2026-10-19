@@ -39,4 +39,5 @@ export type TerminalsWorkspaceIdentity = Readonly<{
 
 export type TerminalsWorkspaceIdentityResolver = Readonly<{
   resolve(workspaceId: string): Promise<TerminalsWorkspaceIdentity | null>;
+  resolveProject(projectId: string): Promise<TerminalsWorkspaceIdentity | null>;
 }>;

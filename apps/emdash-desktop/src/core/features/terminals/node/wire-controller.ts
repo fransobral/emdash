@@ -17,9 +17,14 @@ import {
   withAttachedProject,
 } from '@core/features/projects/api/node/attached-project';
 import type { ProjectAttachmentManager } from '@core/features/projects/api/node/project-attachment-manager';
-import type { TaskSessionLaunchContextResolver } from '@core/features/tasks/api/node/task-session-launch-context';
+import type {
+  TaskSessionLaunchContext,
+  TaskSessionLaunchContextResolver,
+} from '@core/features/tasks/api/node/task-session-launch-context';
 import {
   terminalsContract,
+  type ProjectRootTerminalCreateResult,
+  type ProjectRootTerminalRecord,
   type TerminalCreateResult,
   type TerminalHydrateResult,
   type TerminalRuntimeKey,
@@ -52,7 +57,7 @@ export type CreateTerminalsWireControllerOptions = Readonly<{
   terminalFileSources: TerminalFileSources;
   projects: Pick<ProjectAttachmentManager, 'requireAttached'>;
   runtimes: TerminalsRuntimeBroker;
-  sessionLaunchContexts: Pick<TaskSessionLaunchContextResolver, 'resolve'>;
+  sessionLaunchContexts: Pick<TaskSessionLaunchContextResolver, 'resolve' | 'resolveProjectRoot'>;
   settings: Pick<AppSettingsService, 'get'>;
   workspaceIdentity: TerminalsWorkspaceIdentityResolver;
   logger: Logger;
@@ -116,6 +121,12 @@ export function createTerminalsWireController(
           )
         ),
     },
+    projectRoot: {
+      list: (input) => listProjectRootTerminals(options, input),
+      create: (input) => createProjectRootTerminal(options, input),
+      delete: (input) => deleteProjectRootTerminal(options, input),
+      hydrate: (input) => hydrateProjectRootTerminal(options, input),
+    },
     list: (input) => listTerminals(options, input),
     create: (input) => createTerminal(options, input),
     delete: (input) => deleteTerminal(options, input),
@@ -153,7 +164,7 @@ async function listTerminals(
     .select()
     .from(terminals)
     .where(and(eq(terminals.projectId, projectId), eq(terminals.taskId, taskId)));
-  return ok(rows.map(mapTerminalRowToTerminal));
+  return ok(rows.flatMap((row) => mapTerminalRowToTerminal(row) ?? []));
 }
 
 async function createTerminal(
@@ -182,7 +193,8 @@ async function createTerminal(
     .returning();
 
   const terminal = mapTerminalRowToTerminal(row);
-  const hydrated = await startRuntimeTerminal(options, terminal, input.initialSize);
+  if (!terminal) return err(terminalError('missing-terminal', `Terminal ${input.id} not found`));
+  const hydrated = await startTaskTerminal(options, terminal, input.initialSize);
   if (!hydrated.success) {
     await options.db.delete(terminals).where(eq(terminals.id, input.id)).execute();
     return hydrated;
@@ -272,8 +284,170 @@ async function hydrateTerminal(
       )
     )
     .limit(1);
-  if (!row) return err(terminalError('missing-terminal', `Terminal ${input.terminalId} not found`));
-  return startRuntimeTerminal(options, mapTerminalRowToTerminal(row), input.initialSize);
+  const terminal = row ? mapTerminalRowToTerminal(row) : null;
+  if (!terminal) {
+    return err(terminalError('missing-terminal', `Terminal ${input.terminalId} not found`));
+  }
+  return startTaskTerminal(options, terminal, input.initialSize);
+}
+
+async function resolveProjectRootIdentity(
+  options: CreateTerminalsWireControllerOptions,
+  projectId: string
+): Promise<Result<WorkspaceIdentity, TerminalControllerError>> {
+  const identity = await options.workspaceIdentity.resolveProject(projectId);
+  if (!identity || identity.projectId !== projectId) {
+    return err(terminalError('missing-workspace', `Project ${projectId} has no root workspace`));
+  }
+  return ok(identity);
+}
+
+async function listProjectRootTerminals(
+  options: CreateTerminalsWireControllerOptions,
+  { projectId }: { projectId: string }
+): Promise<Result<ProjectRootTerminalRecord[], TerminalControllerError>> {
+  const identity = await resolveProjectRootIdentity(options, projectId);
+  if (!identity.success) return identity;
+  const rows = await options.db
+    .select()
+    .from(terminals)
+    .where(projectRootTerminalFilter(projectId, identity.data.workspaceId));
+  return ok(rows.flatMap((row) => mapProjectRootRow(row) ?? []));
+}
+
+async function createProjectRootTerminal(
+  options: CreateTerminalsWireControllerOptions,
+  input: {
+    id: string;
+    projectId: string;
+    name: string;
+    shell?: TerminalShellId;
+    initialSize?: { cols: number; rows: number };
+  }
+): Promise<Result<ProjectRootTerminalCreateResult, TerminalControllerError>> {
+  const launchContext = await options.sessionLaunchContexts.resolveProjectRoot({
+    projectId: input.projectId,
+  });
+  if (!launchContext.success) return launchContext;
+  const { workspaceId } = launchContext.data.workspace;
+
+  const shell = input.shell ?? (await options.settings.get('terminal')).defaultShell;
+  const [row] = await options.db
+    .insert(terminals)
+    .values({
+      id: input.id,
+      projectId: input.projectId,
+      taskId: null,
+      workspaceId,
+      name: input.name,
+      shellId: shell,
+      ssh: 0,
+      updatedAt: sql`CURRENT_TIMESTAMP`,
+    })
+    .returning();
+
+  const terminal = mapProjectRootRow(row);
+  if (!terminal) return err(terminalError('missing-terminal', `Terminal ${input.id} not found`));
+  const hydrated = await startRuntimeTerminal(
+    options,
+    terminal,
+    launchContext.data,
+    workspaceId,
+    input.initialSize
+  );
+  if (!hydrated.success) {
+    await options.db.delete(terminals).where(eq(terminals.id, input.id)).execute();
+    return hydrated;
+  }
+
+  options.telemetry.capture('terminal_created', {
+    terminal_id: input.id,
+    project_id: input.projectId,
+    workspace_id: workspaceId,
+  });
+  return ok({ terminal, key: hydrated.data.key });
+}
+
+async function deleteProjectRootTerminal(
+  options: CreateTerminalsWireControllerOptions,
+  { projectId, terminalId }: { projectId: string; terminalId: string }
+): Promise<Result<void, TerminalControllerError>> {
+  const [row] = await options.db
+    .select()
+    .from(terminals)
+    .where(
+      and(
+        eq(terminals.id, terminalId),
+        eq(terminals.projectId, projectId),
+        isNull(terminals.taskId)
+      )
+    )
+    .limit(1);
+  if (!row) return ok(undefined);
+
+  await options.db
+    .delete(terminals)
+    .where(
+      and(
+        eq(terminals.id, terminalId),
+        eq(terminals.projectId, projectId),
+        isNull(terminals.taskId)
+      )
+    );
+  if (row.workspaceId) {
+    await withTerminalRuntime(
+      options,
+      {
+        workspaceId: row.workspaceId,
+        terminalId: makePtySessionId(projectId, row.workspaceId, terminalId),
+      },
+      (client, key) => client.kill({ key })
+    ).catch(() => {});
+  }
+
+  options.telemetry.capture('terminal_deleted', {
+    terminal_id: terminalId,
+    project_id: projectId,
+    workspace_id: row.workspaceId,
+  });
+  return ok(undefined);
+}
+
+async function hydrateProjectRootTerminal(
+  options: CreateTerminalsWireControllerOptions,
+  input: {
+    projectId: string;
+    terminalId: string;
+    initialSize?: { cols: number; rows: number };
+  }
+): Promise<Result<TerminalHydrateResult, TerminalControllerError>> {
+  const launchContext = await options.sessionLaunchContexts.resolveProjectRoot({
+    projectId: input.projectId,
+  });
+  if (!launchContext.success) return launchContext;
+  const { workspaceId } = launchContext.data.workspace;
+
+  const [row] = await options.db
+    .select()
+    .from(terminals)
+    .where(
+      and(
+        eq(terminals.id, input.terminalId),
+        projectRootTerminalFilter(input.projectId, workspaceId)
+      )
+    )
+    .limit(1);
+  const terminal = row ? mapProjectRootRow(row) : null;
+  if (!terminal) {
+    return err(terminalError('missing-terminal', `Terminal ${input.terminalId} not found`));
+  }
+  return startRuntimeTerminal(
+    options,
+    terminal,
+    launchContext.data,
+    workspaceId,
+    input.initialSize
+  );
 }
 
 async function getShellAvailability(
@@ -285,12 +459,27 @@ async function getShellAvailability(
   return runtime.data.terminals.getShellAvailability(undefined);
 }
 
-async function startRuntimeTerminal(
+async function startTaskTerminal(
   options: CreateTerminalsWireControllerOptions,
   terminal: Terminal,
+  initialSize?: { cols: number; rows: number }
+): Promise<Result<TerminalHydrateResult, TerminalControllerError>> {
+  const launchContext = await options.sessionLaunchContexts.resolve({
+    projectId: terminal.projectId,
+    taskId: terminal.taskId,
+  });
+  if (!launchContext.success) return launchContext;
+  return startRuntimeTerminal(options, terminal, launchContext.data, terminal.taskId, initialSize);
+}
+
+async function startRuntimeTerminal(
+  options: CreateTerminalsWireControllerOptions,
+  terminal: Pick<Terminal, 'id' | 'projectId' | 'shellId'>,
+  launchContext: TaskSessionLaunchContext,
+  scopeId: string,
   initialSize: { cols: number; rows: number } = DEFAULT_TERMINAL_SIZE
 ): Promise<Result<TerminalHydrateResult, TerminalControllerError>> {
-  const context = await resolveTerminalContext(options, terminal);
+  const context = await resolveTerminalContext(options, terminal, launchContext, scopeId);
   if (!context.success) return context;
 
   const colorEnv = await options.terminalShell.getColorEnv();
@@ -323,15 +512,11 @@ async function startRuntimeTerminal(
 
 async function resolveTerminalContext(
   options: CreateTerminalsWireControllerOptions,
-  terminal: Terminal
+  terminal: Pick<Terminal, 'id' | 'projectId'>,
+  launchContext: TaskSessionLaunchContext,
+  scopeId: string
 ): Promise<Result<TerminalContext, TerminalControllerError>> {
-  const launchContext = await options.sessionLaunchContexts.resolve({
-    projectId: terminal.projectId,
-    taskId: terminal.taskId,
-  });
-  if (!launchContext.success) return launchContext;
-
-  const identity = launchContext.data.workspace;
+  const identity = launchContext.workspace;
   const gitCredentials = await options.resolveSessionGitCredentials({
     projectId: terminal.projectId,
     host: identity.host,
@@ -339,13 +524,10 @@ async function resolveTerminalContext(
   return ok({
     identity,
     workspace: workspaceRef(identity),
-    key: toTerminalKey(
-      identity,
-      makePtySessionId(terminal.projectId, terminal.taskId, terminal.id)
-    ),
-    tmuxEnabled: launchContext.data.tmux,
-    shellSetup: launchContext.data.shellSetup,
-    taskEnvVars: launchContext.data.env,
+    key: toTerminalKey(identity, makePtySessionId(terminal.projectId, scopeId, terminal.id)),
+    tmuxEnabled: launchContext.tmux,
+    shellSetup: launchContext.shellSetup,
+    taskEnvVars: launchContext.env,
     gitCredentials,
   });
 }
@@ -423,7 +605,28 @@ function runtimeTerminalId(terminalId: string): string {
   return lifecycleScriptNodeIdFromTerminalId(parsed.leafId) ?? terminalId;
 }
 
-function mapTerminalRowToTerminal(row: typeof terminals.$inferSelect): Terminal {
+function projectRootTerminalFilter(projectId: string, workspaceId: string) {
+  return and(
+    eq(terminals.projectId, projectId),
+    isNull(terminals.taskId),
+    eq(terminals.workspaceId, workspaceId)
+  );
+}
+
+function mapProjectRootRow(row: typeof terminals.$inferSelect): ProjectRootTerminalRecord | null {
+  if (row.taskId !== null || !row.workspaceId) return null;
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    workspaceId: row.workspaceId,
+    shellId: row.shellId,
+    name: row.name,
+  };
+}
+
+/** Task terminals only: project-root rows (null taskId) are not task terminals. */
+function mapTerminalRowToTerminal(row: typeof terminals.$inferSelect): Terminal | null {
+  if (row.taskId === null) return null;
   return {
     id: row.id,
     taskId: row.taskId,

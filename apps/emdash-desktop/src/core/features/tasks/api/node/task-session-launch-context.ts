@@ -4,7 +4,10 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { ProjectAttachmentError } from '@core/features/projects/api';
 import type { ProjectAttachmentManager } from '@core/features/projects/api/node/project-attachment-manager';
 import { resolveProjectEffectiveSettings } from '@core/features/projects/api/node/settings/effective-settings';
-import { getTaskEnvVars } from '@core/features/workspaces/api/node/workspace-env';
+import {
+  getTaskEnvVars,
+  getWorkspaceEnvVars,
+} from '@core/features/workspaces/api/node/workspace-env';
 import type {
   WorkspaceIdentity,
   WorkspaceIdentityService,
@@ -30,6 +33,8 @@ export type TaskSessionLaunchContextError =
   | { type: 'missing-task'; message: string }
   | { type: 'missing-workspace'; message: string };
 
+export type ProjectRootLaunchContextInput = Readonly<{ projectId: string }>;
+
 export type TaskSessionLaunchContextSource = Readonly<{
   resolve(): Promise<Result<TaskSessionLaunchContext, TaskSessionLaunchContextError>>;
 }>;
@@ -40,7 +45,7 @@ export class TaskSessionLaunchContextResolver {
       db: AppDb;
       projects: Pick<ProjectAttachmentManager, 'requireAttached'>;
       runtimes: Pick<RuntimeBroker, 'client'>;
-      workspaceIdentity: Pick<WorkspaceIdentityService, 'resolve'>;
+      workspaceIdentity: Pick<WorkspaceIdentityService, 'resolve' | 'resolveProject'>;
     }>
   ) {}
 
@@ -78,9 +83,6 @@ export class TaskSessionLaunchContextResolver {
       });
     }
 
-    const project = this.dependencies.projects.requireAttached(input.projectId);
-    if (!project.success) return project;
-
     const identity = await this.dependencies.workspaceIdentity.resolve(task.workspaceId);
     if (!identity || identity.projectId !== input.projectId) {
       return err({
@@ -88,6 +90,47 @@ export class TaskSessionLaunchContextResolver {
         message: `Workspace ${task.workspaceId} was not found`,
       });
     }
+
+    return this.resolveForIdentity(input.projectId, identity, (ctx) =>
+      getTaskEnvVars({
+        taskId: task.id,
+        taskName: task.name,
+        taskPath: identity.path,
+        projectPath: ctx.projectPath,
+        defaultBranch: ctx.defaultBranch,
+        portSeed: identity.path,
+      })
+    );
+  }
+
+  /** Launch context for the project's root workspace; carries no task env vars. */
+  async resolveProjectRoot(
+    input: ProjectRootLaunchContextInput
+  ): Promise<Result<TaskSessionLaunchContext, TaskSessionLaunchContextError>> {
+    const identity = await this.dependencies.workspaceIdentity.resolveProject(input.projectId);
+    if (!identity || identity.projectId !== input.projectId) {
+      return err({
+        type: 'missing-workspace',
+        message: `Project ${input.projectId} has no root workspace`,
+      });
+    }
+
+    return this.resolveForIdentity(input.projectId, identity, (ctx) =>
+      getWorkspaceEnvVars({
+        projectPath: ctx.projectPath,
+        defaultBranch: ctx.defaultBranch,
+        portSeed: identity.path,
+      })
+    );
+  }
+
+  private async resolveForIdentity(
+    projectId: string,
+    identity: WorkspaceIdentity,
+    scopeEnv: (ctx: { projectPath: string; defaultBranch: string | null }) => Record<string, string>
+  ): Promise<Result<TaskSessionLaunchContext, TaskSessionLaunchContextError>> {
+    const project = this.dependencies.projects.requireAttached(projectId);
+    if (!project.success) return project;
 
     const runtime = await this.dependencies.runtimes.client(identity.host);
     if (!runtime.success) return runtime;
@@ -113,13 +156,9 @@ export class TaskSessionLaunchContextResolver {
       shellSetup: projectConfig.data.resolved.shellSetup?.value,
       env: {
         ...projectConfig.data.resolved.env.value,
-        ...getTaskEnvVars({
-          taskId: task.id,
-          taskName: task.name,
-          taskPath: identity.path,
+        ...scopeEnv({
           projectPath: project.data.repoPath,
           defaultBranch: effective.defaultBranch.value?.branch ?? null,
-          portSeed: identity.path,
         }),
       },
     });

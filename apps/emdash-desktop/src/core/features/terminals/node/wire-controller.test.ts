@@ -32,6 +32,7 @@ const controllerDeps = {
         env: {},
       })
     ),
+    resolveProjectRoot: vi.fn(),
   },
   resolveSessionGitCredentials: vi.fn(async () => undefined),
 };
@@ -55,7 +56,10 @@ describe('createTerminalsWireController', () => {
       const controller = createTerminalsWireController({
         ...controllerDeps,
         runtimes: { client } as unknown as TerminalsRuntimeBroker,
-        workspaceIdentity: { resolve: async () => ({ ...identity, host }) },
+        workspaceIdentity: {
+          resolve: async () => ({ ...identity, host }),
+          resolveProject: vi.fn(),
+        },
       });
       const file: WireFile = {
         name: ref.name,
@@ -105,7 +109,7 @@ describe('createTerminalsWireController', () => {
     const controller = createTerminalsWireController({
       ...controllerDeps,
       runtimes: { client } as unknown as TerminalsRuntimeBroker,
-      workspaceIdentity: { resolve: vi.fn(async () => identity) },
+      workspaceIdentity: { resolve: vi.fn(async () => identity), resolveProject: vi.fn() },
     });
 
     await expect(
@@ -144,6 +148,7 @@ describe('createTerminalsWireController', () => {
       } as unknown as TerminalsRuntimeBroker,
       workspaceIdentity: {
         resolve: vi.fn(async () => ({ ...identity, host: remoteHost })),
+        resolveProject: vi.fn(),
       },
     });
 
@@ -166,7 +171,7 @@ describe('createTerminalsWireController', () => {
     const controller = createTerminalsWireController({
       ...controllerDeps,
       runtimes: { client } as unknown as TerminalsRuntimeBroker,
-      workspaceIdentity: { resolve: vi.fn() },
+      workspaceIdentity: { resolve: vi.fn(), resolveProject: vi.fn() },
     });
 
     await expect(controller.call('getShellAvailability', { host: remoteHost })).resolves.toEqual(
@@ -189,7 +194,7 @@ describe('createTerminalsWireController', () => {
       runtimes: {
         client: async () => err(resolveError),
       } as unknown as TerminalsRuntimeBroker,
-      workspaceIdentity: { resolve: vi.fn() },
+      workspaceIdentity: { resolve: vi.fn(), resolveProject: vi.fn() },
     });
 
     await expect(controller.call('getShellAvailability', { host: remoteHost })).resolves.toEqual(
@@ -224,11 +229,11 @@ describe('createTerminalsWireController', () => {
       ...controllerDeps,
       db: { select } as never,
       projects: { requireAttached } as never,
-      sessionLaunchContexts: { resolve: resolveLaunchContext },
+      sessionLaunchContexts: { resolve: resolveLaunchContext, resolveProjectRoot: vi.fn() },
       runtimes: {
         client: vi.fn(async () => ok(runtime)),
       } as unknown as TerminalsRuntimeBroker,
-      workspaceIdentity: { resolve: vi.fn(async () => identity) },
+      workspaceIdentity: { resolve: vi.fn(async () => identity), resolveProject: vi.fn() },
     });
 
     await expect(
@@ -261,6 +266,229 @@ describe('createTerminalsWireController', () => {
     expect(requireAttached).toHaveBeenCalledWith(identity.projectId);
   });
 
+  describe('projectRoot', () => {
+    const rootIdentity = { ...identity, workspaceId: 'root-1', path: '/repo' } as const;
+    const rootRow = {
+      id: 'terminal-1',
+      projectId: identity.projectId,
+      taskId: null,
+      workspaceId: rootIdentity.workspaceId,
+      name: 'Terminal',
+      shellId: 'system',
+      ssh: 0,
+    };
+    const rootLaunchContext = {
+      workspace: rootIdentity,
+      tmux: false,
+      shellSetup: 'source .root-env',
+      env: { EMDASH_ROOT_PATH: '/repo' },
+    };
+
+    function rootController(overrides: Record<string, unknown> = {}) {
+      const start = vi.fn(async () => ok(undefined));
+      const kill = vi.fn(async () => ok(undefined));
+      const resolveProjectRoot = vi.fn(async () => ok(rootLaunchContext));
+      const controller = createTerminalsWireController({
+        ...controllerDeps,
+        sessionLaunchContexts: { resolve: vi.fn(), resolveProjectRoot },
+        runtimes: {
+          client: vi.fn(async () => ok({ terminals: { start, kill } })),
+        } as unknown as TerminalsRuntimeBroker,
+        workspaceIdentity: {
+          resolve: vi.fn(async () => rootIdentity),
+          resolveProject: vi.fn(async () => rootIdentity),
+        },
+        ...overrides,
+      });
+      return { controller, start, kill, resolveProjectRoot };
+    }
+
+    it('scopes the PTY session id to the root workspace and omits task env vars', async () => {
+      const values = vi.fn(() => ({ returning: async () => [rootRow] }));
+      const { controller, start } = rootController({
+        db: { insert: vi.fn(() => ({ values })) } as never,
+      });
+
+      const result = await controller.call('projectRoot.create', {
+        id: rootRow.id,
+        projectId: identity.projectId,
+        name: rootRow.name,
+        shell: 'system',
+      });
+
+      const ptyId = `${identity.projectId}:${rootIdentity.workspaceId}:${rootRow.id}`;
+      expect(result).toEqual(
+        ok({
+          terminal: {
+            id: rootRow.id,
+            projectId: identity.projectId,
+            workspaceId: rootIdentity.workspaceId,
+            shellId: 'system',
+            name: 'Terminal',
+          },
+          key: { workspaceId: rootIdentity.workspaceId, terminalId: ptyId },
+        })
+      );
+      expect(values).toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: null, workspaceId: rootIdentity.workspaceId })
+      );
+      expect(start).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: { workspace: hostFileRefFromNativePath('/repo'), id: ptyId },
+          spec: expect.objectContaining({
+            cwd: '/repo',
+            shellSetup: 'source .root-env',
+            env: expect.not.objectContaining({ EMDASH_TASK_ID: expect.anything() }),
+          }),
+        })
+      );
+    });
+
+    it('returns missing-workspace when the project has no root workspace', async () => {
+      const error = { type: 'missing-workspace', message: 'no root' } as const;
+      const insert = vi.fn();
+      const { controller } = rootController({
+        db: { insert } as never,
+        sessionLaunchContexts: {
+          resolve: vi.fn(),
+          resolveProjectRoot: vi.fn(async () => err(error)),
+        },
+        workspaceIdentity: { resolve: vi.fn(), resolveProject: vi.fn(async () => null) },
+      });
+
+      await expect(
+        controller.call('projectRoot.create', {
+          id: 'terminal-1',
+          projectId: identity.projectId,
+          name: 'Terminal',
+        })
+      ).resolves.toEqual(err(error));
+      await expect(
+        controller.call('projectRoot.list', { projectId: identity.projectId })
+      ).resolves.toMatchObject({ success: false, error: { type: 'missing-workspace' } });
+      expect(insert).not.toHaveBeenCalled();
+    });
+
+    it('lists only workspace-scoped rows, dropping rows without a workspace', async () => {
+      const where = vi.fn(async () => [rootRow, { ...rootRow, id: 'legacy', workspaceId: null }]);
+      const { controller } = rootController({
+        db: { select: () => ({ from: () => ({ where }) }) } as never,
+      });
+
+      await expect(
+        controller.call('projectRoot.list', { projectId: identity.projectId })
+      ).resolves.toEqual(
+        ok([
+          {
+            id: rootRow.id,
+            projectId: identity.projectId,
+            workspaceId: rootIdentity.workspaceId,
+            shellId: 'system',
+            name: 'Terminal',
+          },
+        ])
+      );
+      expect(where).toHaveBeenCalledOnce();
+    });
+
+    it('hydrates a root terminal with the scoped PTY id', async () => {
+      const { controller, start } = rootController({
+        db: { select: vi.fn().mockReturnValueOnce(selecting(rootRow)) } as never,
+      });
+
+      await expect(
+        controller.call('projectRoot.hydrate', {
+          projectId: identity.projectId,
+          terminalId: rootRow.id,
+        })
+      ).resolves.toEqual(
+        ok({
+          key: {
+            workspaceId: rootIdentity.workspaceId,
+            terminalId: `${identity.projectId}:${rootIdentity.workspaceId}:${rootRow.id}`,
+          },
+        })
+      );
+      expect(start).toHaveBeenCalledOnce();
+    });
+
+    it('reports missing-terminal when hydrating an unknown root terminal', async () => {
+      const { controller } = rootController({
+        db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }) },
+      });
+
+      await expect(
+        controller.call('projectRoot.hydrate', {
+          projectId: identity.projectId,
+          terminalId: 'nope',
+        })
+      ).resolves.toMatchObject({ success: false, error: { type: 'missing-terminal' } });
+    });
+
+    it('deletes the row and kills the scoped PTY session', async () => {
+      const deleteWhere = vi.fn(async () => undefined);
+      const { controller, kill } = rootController({
+        db: {
+          select: vi.fn().mockReturnValueOnce(selecting(rootRow)),
+          delete: vi.fn(() => ({ where: deleteWhere })),
+        } as never,
+      });
+
+      await expect(
+        controller.call('projectRoot.delete', {
+          projectId: identity.projectId,
+          terminalId: rootRow.id,
+        })
+      ).resolves.toEqual(ok(undefined));
+
+      expect(deleteWhere).toHaveBeenCalledOnce();
+      expect(kill).toHaveBeenCalledWith({
+        key: {
+          workspace: hostFileRefFromNativePath('/repo'),
+          id: `${identity.projectId}:${rootIdentity.workspaceId}:${rootRow.id}`,
+        },
+      });
+    });
+  });
+
+  it('keeps project-root rows out of the task terminal list', async () => {
+    const taskRow = {
+      id: 'terminal-task',
+      projectId: identity.projectId,
+      taskId: 'task-1',
+      workspaceId: null,
+      name: 'Task terminal',
+      shellId: 'system',
+      ssh: 0,
+    };
+    const rootRow = { ...taskRow, id: 'terminal-root', taskId: null, workspaceId: 'root-1' };
+    const where = vi.fn(async () => [taskRow, rootRow]);
+    const controller = createTerminalsWireController({
+      ...controllerDeps,
+      db: { select: () => ({ from: () => ({ where }) }) } as never,
+      runtimes: { client: vi.fn() } as unknown as TerminalsRuntimeBroker,
+      workspaceIdentity: { resolve: vi.fn(), resolveProject: vi.fn() },
+    });
+
+    const result = await controller.call('list', {
+      projectId: identity.projectId,
+      taskId: 'task-1',
+    });
+
+    expect(result).toEqual(
+      ok([
+        {
+          id: 'terminal-task',
+          projectId: identity.projectId,
+          taskId: 'task-1',
+          ssh: false,
+          shellId: 'system',
+          name: 'Task terminal',
+        },
+      ])
+    );
+  });
+
   it('resolves the output source for the workspace host', async () => {
     const source = liveSource();
     const handle = vi.fn(() => ({ asLiveSource: () => source }));
@@ -269,7 +497,7 @@ describe('createTerminalsWireController', () => {
       runtimes: {
         client: async () => ok({ terminals: { output: { handle } } }),
       } as unknown as TerminalsRuntimeBroker,
-      workspaceIdentity: { resolve: vi.fn(async () => identity) },
+      workspaceIdentity: { resolve: vi.fn(async () => identity), resolveProject: vi.fn() },
     });
     const key = {
       workspaceId: identity.workspaceId,

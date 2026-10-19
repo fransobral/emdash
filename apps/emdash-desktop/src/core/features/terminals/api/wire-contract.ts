@@ -24,6 +24,33 @@ export const terminalRecordSchema = z.object({
   name: z.string(),
 });
 
+/** A terminal bound to a project's root workspace rather than a task. */
+export const projectRootTerminalRecordSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  workspaceId: z.string(),
+  shellId: terminalShellIdSchema,
+  name: z.string(),
+});
+
+export const projectRootTerminalProjectInputSchema = z.object({ projectId: z.string() });
+
+export const projectRootTerminalCreateInputSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  name: z.string(),
+  shell: terminalShellIdSchema.optional(),
+  initialSize: terminalSizeSchema.optional(),
+});
+
+export const projectRootTerminalDeleteInputSchema = projectRootTerminalProjectInputSchema.extend({
+  terminalId: z.string(),
+});
+
+export const projectRootTerminalHydrateInputSchema = projectRootTerminalDeleteInputSchema.extend({
+  initialSize: terminalSizeSchema.optional(),
+});
+
 export const terminalCreateInputSchema = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -64,6 +91,11 @@ export const terminalCreateResultSchema = z.object({
 });
 
 export const terminalRuntimeKeySchema = terminalHydrateResultSchema.shape.key;
+
+export const projectRootTerminalCreateResultSchema = z.object({
+  terminal: projectRootTerminalRecordSchema,
+  key: terminalRuntimeKeySchema,
+});
 
 export const terminalRuntimeDataInputSchema = terminalRuntimeKeySchema.extend({
   data: z.string(),
@@ -111,6 +143,28 @@ export const terminalsContract = defineContract({
     delete: fallible({
       input: workspaceAttachmentsContract.attachments.delete.input,
       error: z.union([attachmentErrorSchema, terminalSliceErrorSchema]),
+    }),
+  }),
+  projectRoot: defineContract({
+    list: fallible({
+      input: projectRootTerminalProjectInputSchema,
+      data: z.array(projectRootTerminalRecordSchema),
+      error: terminalSliceErrorSchema,
+    }),
+    create: fallible({
+      input: projectRootTerminalCreateInputSchema,
+      data: projectRootTerminalCreateResultSchema,
+      error: terminalSliceErrorSchema,
+    }),
+    delete: fallible({
+      input: projectRootTerminalDeleteInputSchema,
+      data: z.void(),
+      error: terminalSliceErrorSchema,
+    }),
+    hydrate: fallible({
+      input: projectRootTerminalHydrateInputSchema,
+      data: terminalHydrateResultSchema,
+      error: terminalSliceErrorSchema,
     }),
   }),
   list: fallible({
@@ -165,6 +219,8 @@ export const terminalsContract = defineContract({
 
 export type TerminalsContract = typeof terminalsContract;
 export type TerminalCreateResult = z.infer<typeof terminalCreateResultSchema>;
+export type ProjectRootTerminalRecord = z.infer<typeof projectRootTerminalRecordSchema>;
+export type ProjectRootTerminalCreateResult = z.infer<typeof projectRootTerminalCreateResultSchema>;
 export type TerminalHydrateResult = z.infer<typeof terminalHydrateResultSchema>;
 export type TerminalRuntimeKey = z.infer<typeof terminalRuntimeKeySchema>;
 export type TerminalSliceError = z.infer<typeof terminalSliceErrorSchema>;

@@ -475,9 +475,9 @@ export const terminals = sqliteTable(
     projectId: text('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    taskId: text('task_id')
-      .notNull()
-      .references(() => tasks.id, { onDelete: 'cascade' }),
+    // Null for project-root terminals, which are scoped by workspaceId instead of a task.
+    taskId: text('task_id').references(() => tasks.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id'),
     ssh: integer('ssh').notNull().default(0), // boolean, 0=false, 1=true
     name: text('name').notNull(),
     shellId: text('shell_id').$type<TerminalShellId>().notNull().default('system'),
@@ -490,6 +490,7 @@ export const terminals = sqliteTable(
   },
   (table) => ({
     taskIdIdx: index('idx_terminals_task_id').on(table.taskId),
+    workspaceIdIdx: index('idx_terminals_workspace_id').on(table.workspaceId),
   })
 );
 

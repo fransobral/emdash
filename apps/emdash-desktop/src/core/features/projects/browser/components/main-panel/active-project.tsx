@@ -1,5 +1,11 @@
 import { getPillTabId, PillTabs, type PillTab } from '@emdash/ui/react/patterns';
-import { GitPullRequest, ListTodo, PanelsTopLeft, Settings as SettingsIcon } from 'lucide-react';
+import {
+  GitPullRequest,
+  ListTodo,
+  PanelsTopLeft,
+  Settings as SettingsIcon,
+  SquareTerminal,
+} from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import {
   asAvailableProject,
@@ -12,6 +18,7 @@ import { TaskList } from '@core/features/projects/browser/components/task-view/t
 import { ProjectWorkspacesView } from '@core/features/projects/browser/components/workspaces-view/project-workspaces-view';
 import type { ProjectView } from '@core/features/projects/browser/stores/project-view';
 import { projectViewDef } from '@core/features/projects/contributions/views';
+import { ProjectTerminalsView } from '@core/features/terminals/contributions/browser/project-terminal/project-terminals-view';
 import { useCurrentViewParams } from '@core/primitives/navigation/browser/navigation-hooks';
 import { cn } from '@core/primitives/styling/browser/cn';
 
@@ -19,6 +26,7 @@ const PROJECT_SECTION_PANEL_ID = 'project-section-panel';
 
 const projectViewItems: readonly PillTab<ProjectView>[] = [
   { value: 'tasks', label: 'Tasks', icon: <ListTodo className="size-3.5" /> },
+  { value: 'terminal', label: 'Terminal', icon: <SquareTerminal className="size-3.5" /> },
   {
     value: 'pull-request',
     label: 'Pull Requests',
@@ -58,7 +66,7 @@ export const ActiveProject = observer(function ActiveProject() {
         className={cn(
           'flex w-full flex-col px-1',
           activeView === 'workspaces' && 'min-h-[calc(100vh-16rem)]',
-          (activeView === 'tasks' || activeView === 'pull-request') &&
+          (activeView === 'tasks' || activeView === 'terminal' || activeView === 'pull-request') &&
             'h-[calc(100vh-16rem)] min-h-96',
           // Settings scrolls internally with a pinned footer, so its floor must
           // fit the smallest supported window (500px − 16rem chrome = 244px);
@@ -68,6 +76,7 @@ export const ActiveProject = observer(function ActiveProject() {
         )}
       >
         {activeView === 'tasks' && <TaskList />}
+        {activeView === 'terminal' && <ProjectTerminalsView projectId={projectId} />}
         {activeView === 'pull-request' && <PullRequestView />}
         {activeView === 'workspaces' && <ProjectWorkspacesView projectId={projectId} />}
         {activeView === 'settings' && (

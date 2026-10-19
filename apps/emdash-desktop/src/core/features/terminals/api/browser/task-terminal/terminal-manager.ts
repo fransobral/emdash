@@ -3,7 +3,6 @@ import type { Disposable } from '@emdash/shared/concurrency';
 import { ReplicaLog } from '@emdash/wire/live';
 import type { Terminal as XtermTerminal } from '@xterm/xterm';
 import { computed, makeObservable, observable, reaction, runInAction } from 'mobx';
-import { makeFileLinkHandlers } from '@core/features/editor/api/browser/open-file-in-file-editor';
 import {
   classifyLiveRuntimeObservation,
   type LiveRuntimeObservation,
@@ -18,17 +17,24 @@ import {
 import type { FrontendPtyConnector } from '@core/features/terminals/api/browser/pty/pty';
 import { PtySession } from '@core/features/terminals/api/browser/pty/pty-session';
 import { createXtermLogSink } from '@core/features/terminals/api/browser/pty/xterm-log-sink';
+import {
+  createTaskTerminalScope,
+  terminalErrorMessage,
+  type ManagedTerminal,
+  type ManagedTerminalCreateParams,
+  type TerminalScopeApi,
+} from '@core/features/terminals/api/browser/task-terminal/terminal-scope';
 import { Resource } from '@core/primitives/async-resource/browser/resource';
 import { log } from '@core/primitives/logging/browser/logger';
 import { makePtySessionId } from '@core/primitives/pty/api';
-import { type CreateTerminalParams, type Terminal } from '@core/primitives/terminals/api';
 import { nextTerminalName } from '../../../browser/task-terminal/terminal-tabs';
 
 export class TerminalManagerStore implements Disposable {
   readonly projectId: string;
+  /** Scope key the manager is registered under: a task id, or the project id for project-root terminals. */
   readonly taskId: string;
   /** Data layer: plain Terminal records loaded from the main process. */
-  readonly list: Resource<Terminal[]>;
+  readonly list: Resource<ManagedTerminal[]>;
   /** Data stores keyed by terminal id — populated by reaction on list.data. */
   terminals = observable.map<string, TerminalStore>();
   /** Session layer keyed by terminal id — created alongside data, connected lazily. */
@@ -42,16 +48,13 @@ export class TerminalManagerStore implements Disposable {
   constructor(
     projectId: string,
     taskId: string,
-    readonly hostAccess?: ProjectHostAccess
+    readonly hostAccess?: ProjectHostAccess,
+    private readonly scope: TerminalScopeApi = createTaskTerminalScope(projectId, taskId)
   ) {
     this.projectId = projectId;
     this.taskId = taskId;
 
-    this.list = new Resource<Terminal[]>(async () => {
-      const result = await (await getTerminalsClient()).list({ projectId, taskId });
-      if (!result.success) throw new Error(terminalErrorMessage(result.error));
-      return result.data;
-    }, [{ kind: 'demand' }]);
+    this.list = new Resource<ManagedTerminal[]>(() => this.scope.list(), [{ kind: 'demand' }]);
 
     makeObservable(this, {
       terminals: observable,
@@ -118,22 +121,21 @@ export class TerminalManagerStore implements Disposable {
     return this.list.data !== null;
   }
 
-  get observation(): LiveRuntimeObservation<Terminal[]> {
+  get observation(): LiveRuntimeObservation<ManagedTerminal[]> {
     return classifyLiveRuntimeObservation(
       this.hostAccess?.state ?? { kind: 'ready', hostGeneration: 0 },
       this.list.data ?? undefined
     );
   }
 
-  async createTerminal(params: CreateTerminalParams): Promise<Terminal> {
+  async createTerminal(params: ManagedTerminalCreateParams): Promise<ManagedTerminal> {
     if (this.hostAccess?.liveAction.kind === 'disabled') {
       throw new Error('Live actions are unavailable for this Project.');
     }
     const defaultShell = getAppSettingValueSnapshot('terminal')?.defaultShell ?? 'system';
-    const optimistic: Terminal = {
+    const optimistic: ManagedTerminal = {
       id: params.id,
-      projectId: params.projectId,
-      taskId: params.taskId,
+      projectId: this.projectId,
       shellId: params.shell ?? defaultShell,
       name: params.name,
     };
@@ -144,9 +146,7 @@ export class TerminalManagerStore implements Disposable {
     });
 
     try {
-      const result = await (await getTerminalsClient()).create(params);
-      if (!result.success) throw new Error(terminalErrorMessage(result.error));
-      const { terminal, key } = result.data;
+      const { terminal, key } = await this.scope.create(params);
       runInAction(() => {
         const store = this.terminals.get(params.id);
         if (store) {
@@ -165,16 +165,11 @@ export class TerminalManagerStore implements Disposable {
     }
   }
 
-  async createDefaultTerminal(shell?: TerminalShellId): Promise<Terminal> {
+  async createDefaultTerminal(shell?: TerminalShellId): Promise<ManagedTerminal> {
     const names = Array.from(this.terminals.values()).map((t) => t.data.name);
     const name = nextTerminalName(names);
     const id = crypto.randomUUID();
-    const params: CreateTerminalParams = {
-      id,
-      projectId: this.projectId,
-      taskId: this.taskId,
-      name,
-    };
+    const params: ManagedTerminalCreateParams = { id, name };
     if (shell !== undefined) params.shell = shell;
     return this.createTerminal(params);
   }
@@ -190,14 +185,7 @@ export class TerminalManagerStore implements Disposable {
     });
 
     try {
-      const result = await (
-        await getTerminalsClient()
-      ).delete({
-        projectId: this.projectId,
-        taskId: this.taskId,
-        terminalId,
-      });
-      if (!result.success) throw new Error(terminalErrorMessage(result.error));
+      await this.scope.delete(terminalId);
       session?.destroy();
     } catch (err) {
       runInAction(() => {
@@ -214,16 +202,9 @@ export class TerminalManagerStore implements Disposable {
     if (this.hostAccess?.liveAction.kind === 'disabled') {
       throw new Error('Live actions are unavailable for this Project.');
     }
-    const result = await (
-      await getTerminalsClient()
-    ).hydrate({
-      projectId: this.projectId,
-      taskId: this.taskId,
-      terminalId,
-    });
-    if (!result.success) throw new Error(terminalErrorMessage(result.error));
+    const key = await this.scope.hydrate(terminalId);
     runInAction(() => {
-      this.runtimeKeys.set(terminalId, result.data.key);
+      this.runtimeKeys.set(terminalId, key);
     });
   }
 
@@ -257,10 +238,10 @@ export class TerminalManagerStore implements Disposable {
     }
   }
 
-  private createSession(terminal: Terminal): PtySession {
-    const handlers = makeFileLinkHandlers(terminal.projectId, terminal.taskId);
+  private createSession(terminal: ManagedTerminal): PtySession {
+    const handlers = this.scope.fileLinkHandlers(terminal);
     return new PtySession(
-      makePtySessionId(terminal.projectId, terminal.taskId, terminal.id),
+      makePtySessionId(terminal.projectId, this.scope.sessionScopeId(), terminal.id),
       () => this.hydrateTerminal(terminal.id),
       handlers.onOpenFile,
       handlers.onOpenExternal,
@@ -286,16 +267,12 @@ export class TerminalManagerStore implements Disposable {
 }
 
 export class TerminalStore {
-  data: Terminal;
+  data: ManagedTerminal;
 
-  constructor(terminal: Terminal) {
+  constructor(terminal: ManagedTerminal) {
     this.data = terminal;
     makeObservable(this, { data: observable });
   }
-}
-
-function terminalErrorMessage(error: { type: string; message?: string }): string {
-  return error.message ?? `Terminal operation failed: ${error.type}`;
 }
 
 function createTerminalsConnector(

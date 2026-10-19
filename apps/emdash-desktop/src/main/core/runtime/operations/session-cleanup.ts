@@ -96,6 +96,7 @@ export async function resolveLifecycleSessionTargets(
     for (const row of acpRows) targets.acpConversationIds.add(row.id);
     for (const row of tuiRows) targets.tuiConversationIds.add(row.id);
     for (const row of terminalRows) {
+      if (row.taskId === null) continue;
       targets.terminalSessionIds.add(makePtySessionId(row.projectId, row.taskId, row.id));
     }
     for (const row of [...acpRows, ...tuiRows, ...terminalRows]) {

@@ -76,7 +76,7 @@ describe('TaskSessionLaunchContextResolver', () => {
       runtimes: {
         client: vi.fn(async () => ok({ workspaceRegistry: { getProjectConfig } } as never)),
       },
-      workspaceIdentity: { resolve: vi.fn(async () => identity) },
+      workspaceIdentity: { resolve: vi.fn(async () => identity), resolveProject: vi.fn() },
     });
     const source = resolver.bind({
       projectId: 'project-1',
@@ -140,7 +140,7 @@ describe('TaskSessionLaunchContextResolver', () => {
       } as never,
       projects: { requireAttached },
       runtimes: { client: vi.fn() },
-      workspaceIdentity: { resolve: vi.fn() },
+      workspaceIdentity: { resolve: vi.fn(), resolveProject: vi.fn() },
     });
     const source = resolver.bind({
       projectId: 'project-1',
@@ -156,6 +156,96 @@ describe('TaskSessionLaunchContextResolver', () => {
       },
     });
     expect(requireAttached).not.toHaveBeenCalled();
+  });
+  describe('resolveProjectRoot', () => {
+    const rootIdentity = {
+      workspaceId: 'root-1',
+      projectId: 'project-1',
+      host: { type: 'local', id: 'local' } as const,
+      path: '/repo',
+    };
+
+    function projectRootResolver(resolveProject: () => Promise<typeof rootIdentity | null>) {
+      return new TaskSessionLaunchContextResolver({
+        db: {} as never,
+        projects: {
+          requireAttached: vi.fn(() =>
+            ok({
+              repoPath: '/repo',
+              settings: {
+                resolveTmux: vi.fn(async () => ({
+                  value: true,
+                  provenance: { kind: 'set' as const },
+                })),
+                getStoredGitSettings: vi.fn(async () => ({
+                  defaultBranch: { remote: null, branch: 'main' },
+                })),
+                getPlacementContext: vi.fn(async () => ({
+                  hostWorktreeRoot: null,
+                  builtInWorktreeRoot: '/tmp/worktrees',
+                  homeDirectory: '/tmp',
+                  hostTmux: null,
+                  appDefaultTmux: false,
+                })),
+              },
+              repoFacts: { get: vi.fn(async () => ({ remotes: [], localBranches: ['main'] })) },
+            } as never)
+          ),
+        },
+        runtimes: {
+          client: vi.fn(async () =>
+            ok({
+              workspaceRegistry: {
+                getProjectConfig: vi.fn(async () =>
+                  ok({
+                    resolved: {
+                      shellSetup: { value: 'source profile', from: 'team' as const },
+                      env: { value: { FOO: 'bar' }, from: 'personal' as const },
+                    },
+                  })
+                ),
+              },
+            } as never)
+          ),
+        },
+        workspaceIdentity: { resolve: vi.fn(), resolveProject: vi.fn(resolveProject) },
+      });
+    }
+
+    it('returns root env without task variables', async () => {
+      const result = await projectRootResolver(async () => rootIdentity).resolveProjectRoot({
+        projectId: 'project-1',
+      });
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data.workspace).toEqual(rootIdentity);
+      expect(result.data.tmux).toBe(true);
+      expect(result.data.shellSetup).toBe('source profile');
+      expect(result.data.env).toMatchObject({
+        FOO: 'bar',
+        EMDASH_ROOT_PATH: '/repo',
+        EMDASH_DEFAULT_BRANCH: 'main',
+      });
+      expect(result.data.env.EMDASH_PORT).toBeDefined();
+      expect(Object.keys(result.data.env).filter((key) => key.startsWith('EMDASH_TASK_'))).toEqual(
+        []
+      );
+    });
+
+    it('fails with missing-workspace when the project has no root workspace', async () => {
+      const result = await projectRootResolver(async () => null).resolveProjectRoot({
+        projectId: 'project-1',
+      });
+
+      expect(result).toEqual({
+        success: false,
+        error: {
+          type: 'missing-workspace',
+          message: 'Project project-1 has no root workspace',
+        },
+      });
+    });
   });
 });
 
