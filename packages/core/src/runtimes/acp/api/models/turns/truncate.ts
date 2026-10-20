@@ -17,15 +17,44 @@ function byteLength(text: string): number {
   return textEncoder.encode(text).length;
 }
 
+/** UTF-8 byte length of `text`, counted without allocating an encoded copy. */
+function utf8ByteLength(text: string): number {
+  let bytes = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+      const next = text.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+/** A UTF-16 code unit encodes to at most 3 UTF-8 bytes. */
+const MAX_UTF8_BYTES_PER_CODE_UNIT = 3;
+
 /** Truncates `text` to a head/tail window with a marker when it exceeds the byte threshold. */
 export function truncateText(text: string): { text: string; truncated: boolean } {
-  const size = byteLength(text);
+  // Bound the size from the string length before encoding: this runs on every live session
+  // update, and re-encoding every large text field each time pegged the ACP worker.
+  if (text.length * MAX_UTF8_BYTES_PER_CODE_UNIT <= ITEM_TRUNCATION_THRESHOLD_BYTES) {
+    return { text, truncated: false };
+  }
+  const size = utf8ByteLength(text);
   if (size <= ITEM_TRUNCATION_THRESHOLD_BYTES) return { text, truncated: false };
 
-  const encoded = textEncoder.encode(text);
+  // Every code unit encodes to at least one byte, so these slices cover the head/tail windows
+  // without encoding the whole (possibly multi-megabyte) string.
   const decoder = new TextDecoder('utf-8', { fatal: false });
-  const head = decoder.decode(encoded.subarray(0, ITEM_TRUNCATION_HEAD_BYTES));
-  const tail = decoder.decode(encoded.subarray(encoded.length - ITEM_TRUNCATION_TAIL_BYTES));
+  const headBytes = textEncoder.encode(text.slice(0, ITEM_TRUNCATION_HEAD_BYTES));
+  const tailBytes = textEncoder.encode(text.slice(-ITEM_TRUNCATION_TAIL_BYTES));
+  const head = decoder.decode(headBytes.subarray(0, ITEM_TRUNCATION_HEAD_BYTES));
+  const tail = decoder.decode(tailBytes.subarray(tailBytes.length - ITEM_TRUNCATION_TAIL_BYTES));
   const omittedBytes = size - ITEM_TRUNCATION_HEAD_BYTES - ITEM_TRUNCATION_TAIL_BYTES;
   const omittedKb = Math.max(1, Math.round(omittedBytes / 1024));
   return {
@@ -74,8 +103,23 @@ export function truncateToolNode(node: ToolNode): ToolNode {
   return truncated ? { ...next, truncated: true } : next;
 }
 
+/**
+ * Truncation results keyed by the source item. Transcript items are replaced, never mutated,
+ * so an item seen before maps to the same result; this keeps truncating the streaming active
+ * turn on every update proportional to the items that changed, not to the whole turn.
+ */
+const truncatedItemCache = new WeakMap<TranscriptItem, TranscriptItem>();
+
 /** Truncates the oversized text fields of a single transcript item. */
 export function truncateTranscriptItem(item: TranscriptItem): TranscriptItem {
+  const cached = truncatedItemCache.get(item);
+  if (cached) return cached;
+  const result = truncateTranscriptItemUncached(item);
+  truncatedItemCache.set(item, result);
+  return result;
+}
+
+function truncateTranscriptItemUncached(item: TranscriptItem): TranscriptItem {
   if (item.kind === 'message') {
     const result = truncateText(item.text);
     return result.truncated ? { ...item, text: result.text, truncated: true } : item;

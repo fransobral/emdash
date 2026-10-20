@@ -49,9 +49,37 @@ describe('truncateText', () => {
       ITEM_TRUNCATION_HEAD_BYTES + ITEM_TRUNCATION_TAIL_BYTES + 200
     );
   });
+
+  it('measures multi-byte text by UTF-8 bytes, not code units', () => {
+    // 3 bytes per char: under the threshold in code units, over it in bytes.
+    const cjk = '漢'.repeat(Math.ceil(ITEM_TRUNCATION_THRESHOLD_BYTES / 3) + 10);
+    expect(truncateText(cjk).truncated).toBe(true);
+    // 4 bytes per surrogate pair.
+    const emoji = '😀'.repeat(Math.floor(ITEM_TRUNCATION_THRESHOLD_BYTES / 4));
+    expect(truncateText(emoji).truncated).toBe(false);
+    expect(truncateText(`${emoji}😀`).truncated).toBe(true);
+  });
+
+  it('keeps head and tail byte windows and reports the omitted size', () => {
+    const text = `${'h'.repeat(ITEM_TRUNCATION_HEAD_BYTES)}${'m'.repeat(64 * 1024)}${'t'.repeat(
+      ITEM_TRUNCATION_TAIL_BYTES
+    )}`;
+    expect(truncateText(text).text).toBe(
+      `${'h'.repeat(ITEM_TRUNCATION_HEAD_BYTES)}\n… [64 KB omitidos] …\n${'t'.repeat(
+        ITEM_TRUNCATION_TAIL_BYTES
+      )}`
+    );
+  });
 });
 
 describe('truncateTranscriptTurn', () => {
+  it('reuses the result for an unchanged item across calls', () => {
+    const turn = executeTurn(1, 'x'.repeat(ITEM_TRUNCATION_THRESHOLD_BYTES * 2));
+    const first = truncateTranscriptTurn(turn);
+    const second = truncateTranscriptTurn({ ...turn });
+    expect(second.items[0]).toBe(first.items[0]);
+  });
+
   it('does not mutate or flag items under the threshold', () => {
     const turn = executeTurn(1, 'small output');
     const result = truncateTranscriptTurn(turn);
