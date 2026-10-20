@@ -1,4 +1,4 @@
-import { Button, Dialog, DirectoryField, Input } from '@emdash/ui/react/primitives';
+import { Button, Dialog, Input } from '@emdash/ui/react/primitives';
 import { Check, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { useModalController } from '@core/manifests/browser/modal-api';
@@ -24,7 +24,8 @@ export function LinkUsageAccountModal({
   const [error, setError] = useState<string | null>(null);
 
   const command = configDirPath ? guidedLoginCommand(providerId, configDirPath) : '';
-  const canSave = configDirPath.length > 0 && label.trim().length > 0 && !saving;
+  const isAbsolutePath = configDirPath.startsWith('/') || /^[A-Za-z]:[\\/]/.test(configDirPath);
+  const canSave = isAbsolutePath && label.trim().length > 0 && !saving;
 
   async function handleChooseDirectory(): Promise<void> {
     const host = await getHostClient();
@@ -96,11 +97,23 @@ export function LinkUsageAccountModal({
 
         <label className="flex flex-col gap-1 text-sm">
           Carpeta de configuración
-          <DirectoryField
-            path={configDirPath}
-            placeholder="Elegir carpeta"
-            onClick={() => void handleChooseDirectory()}
-          />
+          {/* Typed path first: emdash-web has no native folder picker, so the dialog alone
+              left the field empty and the account could never be saved. */}
+          <div className="flex gap-2">
+            <Input
+              className="flex-1 font-mono"
+              value={configDirPath}
+              onChange={(e) => setConfigDirPath(e.target.value.trim())}
+              placeholder={providerId === 'claude' ? '/home/usuario/.claude-2' : '/home/usuario/.codex-2'}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void handleChooseDirectory()}
+            >
+              Elegir…
+            </Button>
+          </div>
         </label>
 
         {command && (
