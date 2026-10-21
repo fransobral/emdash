@@ -2,6 +2,7 @@ import { AgentStatus } from '@emdash/ui/react/components';
 import { observer } from 'mobx-react-lite';
 import { formatConversationTitleForDisplay } from '@core/features/conversations/api/browser/conversation-title-utils';
 import { conversationRegistry } from '@core/features/conversations/api/browser/stores/conversation-registry';
+import { confirmConversationTabClose } from '@core/features/conversations/browser/conversation-tab-close';
 import type { TaskTabContext } from '@core/features/workbench/api/browser/tabs/task-tab-context';
 import { MAX_CONVERSATION_TITLE_LENGTH } from '@core/primitives/conversations/api';
 import type {
@@ -123,6 +124,10 @@ export const acpChatTabProvider: TabProvider<
     const manager = getAcpChatResourceManager(taskCtx.taskId, taskCtx.projectId);
     const store = manager.acquire(entry.state.conversationId);
     return new AcpChatTabResource(store);
+  },
+
+  onBeforeClose(entry: TabEntry<AcpChatState>, _resource: AcpChatTabResource, ctx: TabViewContext) {
+    return confirmConversationTabClose((ctx as TaskTabContext).taskId, entry.state.conversationId);
   },
 
   dispose(entry: TabEntry<AcpChatState>, _resource: AcpChatTabResource, ctx: TabViewContext): void {

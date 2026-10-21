@@ -23,6 +23,7 @@ import { openModal } from '@core/manifests/browser/modal-api';
 import { normalizeBrowserUrl } from '@core/primitives/browser/api';
 import { openExternal } from '@core/primitives/desktop-host/browser/host-client';
 import { getNavigation } from '@core/primitives/navigation/browser/navigation-selectors';
+import { isMobileViewport } from '@core/primitives/styling/browser/use-mobile-viewport';
 import {
   disabled,
   enabled,
@@ -92,7 +93,8 @@ const taskScopeImplementation = {
     },
   }),
   'task.sidebarConversations': (params) => ({
-    availability: () => taskAvailability(params),
+    // Desktop shows every conversation as a tab; only the phone layout has the list.
+    availability: () => (isMobileViewport() ? taskAvailability(params) : hidden),
     execute: () => {
       getTaskComposition(params.projectId, params.taskId)?.chrome.commands.toggleSidebarTab(
         'conversations'

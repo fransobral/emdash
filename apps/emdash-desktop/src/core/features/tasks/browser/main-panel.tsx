@@ -402,7 +402,7 @@ const ReadyTaskMainPanel = observer(function ReadyTaskMainPanel() {
               collapsible
               collapsedSize="0%"
             >
-              <TaskSidebar />
+              <TaskSidebar desktop />
             </Resizable.Panel>
           </>
         )}

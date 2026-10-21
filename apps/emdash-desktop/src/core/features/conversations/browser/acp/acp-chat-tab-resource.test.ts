@@ -9,6 +9,14 @@ import { releaseAcpChatResourceManager } from './acp-chat-resource-manager';
 import { acpChatTabProvider } from './acp-chat-tab-provider';
 
 const markConversationSeen = vi.hoisted(() => vi.fn());
+const deleteConversation = vi.hoisted(() => vi.fn(async () => undefined));
+const openModal = vi.hoisted(() => vi.fn());
+const viewport = vi.hoisted(() => ({ mobile: true }));
+
+vi.mock('@core/primitives/styling/browser/use-mobile-viewport', () => ({
+  isMobileViewport: () => viewport.mobile,
+}));
+vi.mock('@core/manifests/browser/modal-api', () => ({ openModal }));
 
 vi.mock('@core/features/projects/api/browser/stores/project-selectors', () => ({
   getProjectHostAccess: () => undefined,
@@ -23,7 +31,7 @@ vi.mock('@core/features/terminals/api/browser/pty/pty', () => ({
   },
 }));
 vi.mock('@core/features/conversations/api/browser/client', () => ({
-  getConversationsClient: async () => ({ markConversationSeen }),
+  getConversationsClient: async () => ({ markConversationSeen, deleteConversation }),
 }));
 // Exercise the real provider, tab lifecycle and conversation stores without booting an agent or DOM.
 vi.mock('./acp-chat-store', () => ({
@@ -45,9 +53,76 @@ vi.mock('@core/primitives/workbench-shell/browser/tabs/tab-bar/generic-tab-item'
 }));
 
 afterEach(() => {
+  viewport.mobile = true;
   releaseAcpChatResourceManager('task-1');
   conversationRegistry.release('task-1');
   vi.clearAllMocks();
+});
+
+function acquireConversations(ids: string[]) {
+  const records: Conversation[] = ids.map((id) => ({
+    id,
+    projectId: 'project-1',
+    taskId: 'task-1',
+    providerId: 'codex',
+    title: id,
+    type: 'acp',
+    lastInteractedAt: null,
+    isInitialConversation: false,
+  }));
+  return conversationRegistry.acquire(
+    'task-1',
+    'project-1',
+    () => formatHostRef(LOCAL_HOST_REF),
+    records
+  );
+}
+
+function createPane() {
+  const context = { viewId: 'task-1', projectId: 'project-1', taskId: 'task-1' };
+  return new PaneStore(createTabRegistry([acpChatTabProvider]), context, {
+    isViewActive: () => true,
+  });
+}
+
+describe('desktop chat tab close', () => {
+  it('keeps the tab and the chat when the delete confirmation is cancelled', async () => {
+    viewport.mobile = false;
+    openModal.mockResolvedValue({ success: false });
+    const manager = acquireConversations(['conversation-1']);
+    const pane = createPane();
+    try {
+      pane.open('acp-chat', { conversationId: 'conversation-1' });
+      pane.closeActiveTab();
+
+      await vi.waitFor(() => expect(openModal).toHaveBeenCalledTimes(1));
+      await Promise.resolve();
+      expect(pane.resolvedTabs).toHaveLength(1);
+      expect(manager.conversations.has('conversation-1')).toBe(true);
+      expect(deleteConversation).not.toHaveBeenCalled();
+    } finally {
+      pane.dispose();
+    }
+  });
+
+  it('deletes the chat and closes the tab once the user confirms', async () => {
+    viewport.mobile = false;
+    openModal.mockResolvedValue({ success: true });
+    const manager = acquireConversations(['conversation-1']);
+    const pane = createPane();
+    try {
+      pane.open('acp-chat', { conversationId: 'conversation-1' });
+      pane.closeActiveTab();
+
+      await vi.waitFor(() => expect(pane.resolvedTabs).toHaveLength(0));
+      expect(deleteConversation).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: 'conversation-1' })
+      );
+      expect(manager.conversations.has('conversation-1')).toBe(false);
+    } finally {
+      pane.dispose();
+    }
+  });
 });
 
 describe('ACP tab notification acknowledgement', () => {
@@ -84,7 +159,8 @@ describe('ACP tab notification acknowledgement', () => {
       pane.requestCloseTab(firstTabId);
       pane.closeActiveTab();
 
-      expect(pane.resolvedTabs).toHaveLength(0);
+      // Conversation tabs have a close veto, so even a plain close settles asynchronously.
+      await vi.waitFor(() => expect(pane.resolvedTabs).toHaveLength(0));
       expect(manager.taskStatus).toBeNull();
       expect(first.status).toBe('awaiting-input');
       await vi.waitFor(() =>

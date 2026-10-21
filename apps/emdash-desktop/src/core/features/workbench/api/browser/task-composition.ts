@@ -74,6 +74,7 @@ import {
 } from '@core/primitives/mementos/browser';
 import { getMementoClient } from '@core/primitives/mementos/browser';
 import { getNavigation } from '@core/primitives/navigation/browser/navigation-selectors';
+import { isMobileViewport } from '@core/primitives/styling/browser/use-mobile-viewport';
 import { focusTracker } from '@core/primitives/telemetry/browser/focus-tracker';
 
 export type RendererKind =
@@ -322,6 +323,14 @@ export class TaskComposition {
     });
   }
 
+  private previewConversationTabIds(): string[] {
+    return this.paneLayout.groups.flatMap((group) =>
+      group.pane.resolvedTabs
+        .filter((tab) => tab.isPreview && (tab.kind === 'conversation' || tab.kind === 'acp-chat'))
+        .map((tab) => tab.tabId)
+    );
+  }
+
   private async hydrateAndSeedPaneLayout(): Promise<void> {
     if (this._paneHydrated) return;
     await this._conversations.list.load();
@@ -471,6 +480,32 @@ export class TaskComposition {
       reaction(
         () => unseenConversationTabs(this._conversations.conversations.values()),
         (tabs) => this.openInBackground(tabs),
+        { fireImmediately: true, equals: comparer.structural }
+      )
+    );
+    // Desktop has no conversations list: every conversation is a tab. Reopen any
+    // conversation left without one (created elsewhere, or closed through a path
+    // that skips the delete confirmation) and pin preview conversation tabs.
+    this._sessionDisposers.push(
+      reaction(
+        () =>
+          isMobileViewport()
+            ? null
+            : {
+                missing: allConversationTabs(this._conversations.conversations.values()).filter(
+                  (tab) => !this.paneLayout.isOpen(tab.kind, tab.conversationId)
+                ),
+                previews: this.previewConversationTabIds(),
+              },
+        (plan) => {
+          if (!plan) return;
+          this.openInBackground(plan.missing);
+          runInAction(() => {
+            for (const group of this.paneLayout.groups) {
+              for (const tabId of plan.previews) group.pane.pin(tabId);
+            }
+          });
+        },
         { fireImmediately: true, equals: comparer.structural }
       )
     );
@@ -654,6 +689,16 @@ function sanitizePaneLayoutConversations(
     groups,
     activeGroupId: activeGroupId ?? value.activeGroupId,
   };
+}
+
+/** Every conversation as a tab descriptor, in the manager's load order. */
+export function allConversationTabs(
+  conversations: Iterable<ConversationStore>
+): Array<{ kind: string; conversationId: string }> {
+  return [...conversations].map((conversation) => ({
+    kind: conversation.data.type === 'acp' ? 'acp-chat' : 'conversation',
+    conversationId: conversation.data.id,
+  }));
 }
 
 export function unseenConversationTabs(

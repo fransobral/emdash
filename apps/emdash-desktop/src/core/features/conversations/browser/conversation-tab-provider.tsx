@@ -7,6 +7,7 @@ import type {
   TabViewContext,
 } from '@core/primitives/workbench-shell/browser/tabs/core/tab-provider';
 import { createTabProvider } from '@core/primitives/workbench-shell/browser/tabs/core/tab-provider-registry';
+import { confirmConversationTabClose } from './conversation-tab-close';
 import { ConversationTabBarItem, ConversationTabBarItemDragPreview } from './conversation-tab-item';
 import { ConversationTabResource } from './conversation-tab-resource';
 import { ConversationsPanel } from './conversations-panel';
@@ -64,6 +65,14 @@ export const conversationTabProvider: TabProvider<
       return dummy;
     }
     return new ConversationTabResource(store, taskCtx.taskId, handle);
+  },
+
+  onBeforeClose(
+    entry: TabEntry<ConversationState>,
+    _resource: ConversationTabResource,
+    ctx: TabViewContext
+  ) {
+    return confirmConversationTabClose((ctx as TaskTabContext).taskId, entry.state.conversationId);
   },
 
   dispose(

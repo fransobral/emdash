@@ -13,6 +13,11 @@ function getSnapshot(): boolean {
   return window.matchMedia(MOBILE_VIEWPORT_QUERY).matches;
 }
 
+/** Non-reactive read for code outside React (e.g. tab provider callbacks). */
+export function isMobileViewport(): boolean {
+  return typeof window !== 'undefined' && getSnapshot();
+}
+
 export function useMobileViewport(): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, () => false);
 }

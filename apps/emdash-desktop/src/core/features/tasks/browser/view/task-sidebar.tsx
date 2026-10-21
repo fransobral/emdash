@@ -2,6 +2,7 @@ import { observer } from 'mobx-react-lite';
 import { SidebarConversationsList } from '@core/features/conversations/contributions/browser/sidebar-conversations-list';
 import { EditorFileTree } from '@core/features/editor/contributions/browser/editor-file-tree';
 import { ChangesPanel } from '@core/features/source-control/contributions/browser/changes-panel';
+import { desktopSidebarTab } from '@core/features/tasks/api/browser/types';
 import { useTaskComposition } from '@core/features/workbench/api/browser/task-composition-context';
 
 /**
@@ -18,9 +19,14 @@ import { useTaskComposition } from '@core/features/workbench/api/browser/task-co
  * via the shared layout storage (task panel-layouts memento) and survive the
  * remount. No tab body owns a Monaco instance.
  */
-export const TaskSidebar = observer(function TaskSidebar() {
+export const TaskSidebar = observer(function TaskSidebar({
+  desktop = false,
+}: {
+  /** Desktop has no conversations list (every chat is a tab); show Changes instead. */
+  desktop?: boolean;
+}) {
   const taskView = useTaskComposition();
-  const activeTab = taskView.sidebarTab;
+  const activeTab = desktop ? desktopSidebarTab(taskView.sidebarTab) : taskView.sidebarTab;
 
   return (
     <div className="h-full min-h-0 overflow-hidden">

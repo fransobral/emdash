@@ -12,7 +12,6 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
-  MessagesSquare,
   FileDiff,
   FolderOpen,
   GitBranch,
@@ -21,7 +20,6 @@ import {
   Terminal,
 } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
-import { taskAgentStatus } from '@core/features/conversations/api/browser/conversation-selectors';
 import { ConnectionStatusDot } from '@core/features/machines/contributions/browser/connection-status-dot';
 import {
   asAvailableProject,
@@ -39,7 +37,7 @@ import {
   taskDisplayName,
   taskViewKind,
 } from '@core/features/tasks/api/browser/task-state/task-selectors';
-import { type SidebarTab } from '@core/features/tasks/api/browser/types';
+import { desktopSidebarTab, type SidebarTab } from '@core/features/tasks/api/browser/types';
 import { useTaskViewContext } from '@core/features/tasks/contributions/browser/task-view-context';
 import {
   useTaskComposition,
@@ -115,8 +113,6 @@ const ActiveTaskTitlebar = observer(function ActiveTaskTitlebar({
   const taskView = useTaskComposition();
   const gitCheckout = workspace.get(gitCheckoutStoreToken);
   // The chats list hides behind this toggle on desktop; flag chats with unread results.
-  const taskStatus = taskStore ? taskAgentStatus(taskStore) : null;
-  const hasUnseenConversation = taskStatus !== null && taskStatus !== 'working';
 
   const {
     isPublished,
@@ -347,7 +343,7 @@ const ActiveTaskTitlebar = observer(function ActiveTaskTitlebar({
           </Tooltip.Root>
           <Separator orientation="vertical" className="h-5 self-center!" />
           <ToggleGroup.Root
-            value={taskView.isSidebarCollapsed ? [] : [taskView.sidebarTab]}
+            value={taskView.isSidebarCollapsed ? [] : [desktopSidebarTab(taskView.sidebarTab)]}
             onValueChange={([tab]) => {
               if (!tab) {
                 taskView.chrome.commands.collapseSidebar();
@@ -401,28 +397,6 @@ const ActiveTaskTitlebar = observer(function ActiveTaskTitlebar({
               />
               <Tooltip.Content>
                 Files <BoundShortcut command="task.sidebarFiles" variant="keycaps" />
-              </Tooltip.Content>
-            </Tooltip.Root>
-            <Tooltip.Root>
-              <Tooltip.Trigger
-                render={
-                  <ToggleGroup.Item
-                    size="sm"
-                    icon
-                    value="conversations"
-                    aria-label="Conversations"
-                    className="relative"
-                  >
-                    <MessagesSquare className="size-3.5" />
-                    {hasUnseenConversation && (
-                      <span className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-foreground-diff-added" />
-                    )}
-                  </ToggleGroup.Item>
-                }
-              />
-              <Tooltip.Content>
-                Conversations{' '}
-                <BoundShortcut command="task.sidebarConversations" variant="keycaps" />
               </Tooltip.Content>
             </Tooltip.Root>
           </ToggleGroup.Root>
