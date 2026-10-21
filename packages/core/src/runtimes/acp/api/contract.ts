@@ -70,6 +70,15 @@ export const acpApiContract = defineContract({
     input: terminateCommandSchema,
     error: acpTerminateErrorSchema,
   }),
+  /**
+   * Restarts the conversation in place on a fresh provider session (empty agent context),
+   * keeping agent, account, model, mode and effort. The transcript starts empty.
+   */
+  resetSession: fallible({
+    input: terminateCommandSchema,
+    data: z.object({ sessionId: z.string() }),
+    error: acpLaunchErrorSchema,
+  }),
   sendPrompt: fallible({
     input: sendPromptCommandSchema,
     data: sendPromptResponseSchema,

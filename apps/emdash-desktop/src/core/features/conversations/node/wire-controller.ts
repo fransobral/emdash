@@ -232,6 +232,8 @@ export function createConversationsWireController(
       },
       terminate: (input, meta) =>
         run(input.conversationId, (client) => client.acp.terminate(input, callOptions(meta))),
+      resetSession: (input, meta) =>
+        run(input.conversationId, (client) => client.acp.resetSession(input, callOptions(meta))),
       sendPrompt: (input, meta) =>
         run(input.conversationId, (client) =>
           client.acp.sendPrompt(input, { ...callOptions(meta), timeoutMs: 0 })

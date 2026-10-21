@@ -76,6 +76,15 @@ const ISSUE_SEARCH_LIMIT = 20;
 const SLASH_COMMANDS_SECTION = 'Commands';
 const SLASH_PROMPTS_SECTION = 'Prompts';
 
+/** Local command: restarts the agent on a fresh session, clearing its context in place. */
+const RESTART_SESSION_COMMAND: CommandItem = {
+  id: 'emdash:restart-session',
+  name: 'clear',
+  label: 'clear',
+  description: 'Reiniciar la sesión: el agente arranca sin contexto, en este mismo chat',
+  behavior: 'execute',
+};
+
 function promptPreview(text: string): string {
   return text.split(/\r?\n/, 1)[0] ?? '';
 }
@@ -579,9 +588,19 @@ const ComposerForStore = observer(function ComposerForStore({
           insertText: prompt.prompt,
           section: SLASH_PROMPTS_SECTION,
         }));
-      return [...commands, ...prompts];
+      const restart =
+        store.liveActionsEnabled && RESTART_SESSION_COMMAND.name.startsWith(normalized)
+          ? [{ ...RESTART_SESSION_COMMAND, section: SLASH_COMMANDS_SECTION }]
+          : [];
+      return [...restart, ...commands, ...prompts];
     },
     [store, promptLibrary]
+  );
+  const handleSlashCommand = useCallback(
+    (item: CommandItem) => {
+      if (item.id === RESTART_SESSION_COMMAND.id) store.restartSession();
+    },
+    [store]
   );
 
   const a = store.affordances;
@@ -655,6 +674,7 @@ const ComposerForStore = observer(function ComposerForStore({
           mentionProvider={mentionProvider}
           renderMentionIcon={renderMentionIcon}
           queryCommands={querySlashItems}
+          onCommand={handleSlashCommand}
           attachments={attachments}
           onAttachmentsChange={handleAttachmentsChange}
           onAttach={store.liveActionsEnabled ? handleAttach : undefined}

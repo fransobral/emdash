@@ -60,6 +60,8 @@ export class ConversationHandle {
   private evictionPromiseValue: Promise<void> | null = null;
   private retainedValue: RetainedPresentation;
   private desiredRevisionValue = 0;
+  /** Set by resetForFreshSession until the fresh provider session materializes. */
+  private freshSessionPending = false;
   // A timed-out close must continue fencing later activations until it settles or its
   // provider connection is gone. Disposing the old cell alone cannot prove that.
   private providerClose: { record: SessionRecord; task: Promise<void>; failed: boolean } | null =
@@ -389,10 +391,24 @@ export class ConversationHandle {
     this.initialQueueConsumed = false;
   }
 
+  /**
+   * Drops the provider session so the next materialization starts a fresh one (newSession,
+   * empty agent context) with the same agent, account, model, mode and effort. Used for
+   * "restart session". Until that session materializes, a host refresh must not bring back
+   * the old session id, which the host still reports.
+   */
+  resetForFreshSession(): void {
+    if (!this.isCurrent()) return;
+    this.descriptor = { ...this.descriptor, sessionId: null, initialQueue: undefined };
+    this.initialQueueConsumed = true;
+    this.freshSessionPending = true;
+  }
+
   markMaterialized(record: SessionRecord, initialQueueConsumed: boolean): void {
     if (!this.isCurrentRecord(record)) return;
     this.initialQueueConsumed = initialQueueConsumed;
     this.everMaterialized = true;
+    this.freshSessionPending = false;
     this.updateDescriptor({ sessionId: record.cell.acpSessionId });
     this.syncRecord(record);
   }
@@ -444,8 +460,9 @@ export class ConversationHandle {
       ...descriptor,
       // The runtime can observe a replacement session id before the host report converges. A
       // stale host value must not discard that newer runtime fact on the next activation.
-      sessionId:
-        this.everMaterialized && this.descriptor.sessionId
+      sessionId: this.freshSessionPending
+        ? null
+        : this.everMaterialized && this.descriptor.sessionId
           ? this.descriptor.sessionId
           : descriptor.sessionId,
     };

@@ -451,6 +451,33 @@ export class SessionManager {
     return ok();
   }
 
+  /**
+   * Restarts the conversation on a fresh provider session (empty agent context) in place:
+   * the same handle keeps agent, account, model, mode and effort, so the chat tab and its
+   * configuration survive. Modeled on the Codex failover relaunch, minus the requeue.
+   */
+  async resetSession(
+    conversationId: string
+  ): Promise<Result<{ sessionId: string }, AcpStartError>> {
+    const entry = this.retained.get(conversationId);
+    if (!entry || !entry.isCurrent()) {
+      return acpErr.invalidState('ACP conversation is not attached');
+    }
+
+    await this.stop(conversationId, 'user-reset');
+
+    const current = this.retained.get(conversationId);
+    if (!current || current !== entry || !current.isCurrent()) {
+      return acpErr.invalidState('ACP conversation changed while restarting');
+    }
+    current.resetForFreshSession();
+    current.saveIntent();
+
+    const relaunched = await this.activateEntry(current, false);
+    if (!relaunched.success) return relaunched;
+    return ok({ sessionId: relaunched.data.sessionId });
+  }
+
   async kill(conversationId: string): Promise<Result<void, AcpTerminateError>> {
     const entry = this.retained.get(conversationId);
     if (entry) {

@@ -34,6 +34,9 @@ export function createAcpProcedures(runtime: AcpRuntime) {
     terminate(input: { conversationId: string }): Promise<Result<void, AcpTerminateError>> {
       return runtime.terminateSession(input.conversationId);
     },
+    resetSession(input: { conversationId: string }): ReturnType<AcpRuntime['resetSession']> {
+      return runtime.resetSession(input.conversationId);
+    },
     sendPrompt(input: {
       conversationId: string;
       promptId: string;

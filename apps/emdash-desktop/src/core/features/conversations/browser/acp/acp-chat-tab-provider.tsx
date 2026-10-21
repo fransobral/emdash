@@ -4,6 +4,7 @@ import { formatConversationTitleForDisplay } from '@core/features/conversations/
 import { conversationRegistry } from '@core/features/conversations/api/browser/stores/conversation-registry';
 import { confirmConversationTabClose } from '@core/features/conversations/browser/conversation-tab-close';
 import type { TaskTabContext } from '@core/features/workbench/api/browser/tabs/task-tab-context';
+import { openModal } from '@core/manifests/browser/modal-api';
 import { MAX_CONVERSATION_TITLE_LENGTH } from '@core/primitives/conversations/api';
 import type {
   TabEntry,
@@ -21,6 +22,7 @@ import {
 import { ConversationAgentIcon } from '../conversation-agent-icon';
 import { AcpChatPanel } from './acp-chat-panel';
 import { getAcpChatResourceManager } from './acp-chat-resource-manager';
+import type { AcpChatStore } from './acp-chat-store';
 import { AcpChatTabResource } from './acp-chat-tab-resource';
 
 export interface AcpChatState {
@@ -68,6 +70,13 @@ export const AcpChatTabBarItem = observer(function AcpChatTabBarItem({
           shortcut: { commandId: 'workbench.tabRename' },
           run: () => host.requestRename(tab.tabId),
         },
+        {
+          id: 'conversation:restart-session',
+          label: 'Reiniciar sesión',
+          group: 'session',
+          isAvailable: () => store.liveActionsEnabled,
+          run: () => void confirmRestartSession(store, label),
+        },
       ]}
       renameValue={rawTitle}
       renameMaxLength={MAX_CONVERSATION_TITLE_LENGTH}
@@ -100,6 +109,17 @@ export const AcpChatTabBarItemDragPreview = observer(function AcpChatTabBarItemD
 const AcpChatTabContent = observer(function AcpChatTabContent() {
   return <AcpChatPanel />;
 });
+
+/** Restarting drops the agent's context and the visible transcript, so confirm it first. */
+async function confirmRestartSession(store: AcpChatStore, title: string): Promise<void> {
+  const outcome = await openModal('confirmActionModal', {
+    title: 'Reiniciar sesión',
+    description: `"${title}" arranca de cero: el agente pierde el contexto y el historial se limpia. Se mantienen agente, cuenta y modelo.`,
+    confirmLabel: 'Reiniciar',
+    variant: 'destructive',
+  });
+  if (outcome.success) store.restartSession();
+}
 
 export const acpChatTabProvider: TabProvider<
   'acp-chat',

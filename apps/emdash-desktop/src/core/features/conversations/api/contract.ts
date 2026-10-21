@@ -100,6 +100,10 @@ const conversationsAcpContract = defineContract({
     acpApiContract.terminate.input,
     acpApiContract.terminate.output
   ),
+  resetSession: runtimeFallibleProcedure(
+    acpApiContract.resetSession.input,
+    acpApiContract.resetSession.output
+  ),
   sendPrompt: runtimeFallibleProcedure(
     acpApiContract.sendPrompt.input,
     acpApiContract.sendPrompt.output

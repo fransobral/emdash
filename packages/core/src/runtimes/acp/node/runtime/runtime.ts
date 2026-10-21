@@ -84,6 +84,11 @@ export class AcpRuntime {
     return this.manager.kill(conversationId);
   }
 
+  /** Restarts the conversation on a fresh provider session, clearing the agent's context. */
+  resetSession(conversationId: string): ReturnType<SessionManager['resetSession']> {
+    return this.manager.resetSession(conversationId);
+  }
+
   reconcile(): Promise<void> {
     return this.manager.reconcile();
   }

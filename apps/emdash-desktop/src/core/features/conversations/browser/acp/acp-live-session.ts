@@ -278,6 +278,11 @@ export class AcpLiveSession {
     return this.client.cancelTurn({ conversationId: this.conversationId });
   }
 
+  /** Restarts the agent on a fresh session (empty context) in this same conversation. */
+  resetSession(): Promise<Result<unknown, unknown>> {
+    return this.client.resetSession({ conversationId: this.conversationId });
+  }
+
   setOption(
     key: 'model' | 'mode' | 'effort' | 'collaborationMode',
     value: string

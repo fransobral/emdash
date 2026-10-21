@@ -610,6 +610,25 @@ export class AcpChatStore {
       .catch((error: unknown) => this._toastError('Failed to stop', error));
   }
 
+  /**
+   * Clears the agent's context by restarting it on a fresh session in this conversation.
+   * Agent, account, model, mode and effort are kept; the transcript starts empty once the
+   * new session's history page replaces the old one.
+   */
+  restartSession(): void {
+    if (!this.liveActionsEnabled) return;
+    void this.session
+      ?.resetSession()
+      .then((result) => {
+        if (!result.success) {
+          this._toastError('Failed to restart session', result.error);
+          return;
+        }
+        this._requestHistoryRefresh();
+      })
+      .catch((error: unknown) => this._toastError('Failed to restart session', error));
+  }
+
   setModel(model: string): void {
     if (!this.liveActionsEnabled) return;
     void this.session
