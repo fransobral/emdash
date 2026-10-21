@@ -48,6 +48,7 @@ export const CreateTaskModal = observer(function CreateTaskModal({
   initialPR,
   initialWorkspaceId,
   initialPrompt,
+  initialModel,
 }: {
   projectId?: string;
   strategy?: 'from-branch' | 'from-issue' | 'from-pull-request';
@@ -55,6 +56,8 @@ export const CreateTaskModal = observer(function CreateTaskModal({
   initialWorkspaceId?: string;
   /** Prefills the initial conversation prompt (e.g. from the mobile home composer). */
   initialPrompt?: string;
+  /** Preselects the initial conversation model (e.g. from the mobile home composer). */
+  initialModel?: string;
 }) {
   const { complete } = useModalController('taskModal');
   const selectedProjectId = useDefaultProjectId(projectId);
@@ -103,9 +106,10 @@ export const CreateTaskModal = observer(function CreateTaskModal({
     undefined,
     autoApproveByDefault
   );
-  const { setPrompt } = initialConversation;
+  const { setPrompt, setModel } = initialConversation;
   useEffect(() => {
     if (initialPrompt) setPrompt(initialPrompt);
+    if (initialModel) setModel(initialModel);
     // oxlint-disable-next-line react/exhaustive-deps
   }, []); // seed once on mount
   const { navigate } = useNavigate();

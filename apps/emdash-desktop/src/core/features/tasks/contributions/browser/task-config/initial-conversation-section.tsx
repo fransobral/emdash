@@ -65,6 +65,10 @@ export type InitialConversationState = {
   setIssueMentionContext: (token: string, context: string | null) => void;
 };
 
+/** Remembered new-conversation preferences, shared with the mobile home composer. */
+export const AUTO_APPROVE_PREFERENCE_KEY = 'initial-conversation:auto-approve-enabled';
+export const CHAT_UI_PREFERENCE_KEY = 'initial-conversation:chat-ui-enabled';
+
 interface InitialConversationStateOptions {
   resetPromptOnProjectChange?: boolean;
 }
@@ -82,14 +86,14 @@ export function useInitialConversationState(
   const [prompt, setPrompt] = useState('');
   const [issueContext, setIssueContext] = useState<string | null>(null);
   const [autoApprovePreference, setAutoApprovePreference] = useLocalStorage(
-    'initial-conversation:auto-approve-enabled',
+    AUTO_APPROVE_PREFERENCE_KEY,
     autoApproveByDefault
   );
   const [issueContextEditorOpen, setIssueContextEditorOpen] = useState(false);
   const [model, setModel] = useState<string | null>(null);
   const [issueMentionContexts, setIssueMentionContexts] = useState<Record<string, string>>({});
   const [useChatUiPreference, setUseChatUiPreference] = useLocalStorage(
-    'initial-conversation:chat-ui-enabled',
+    CHAT_UI_PREFERENCE_KEY,
     false
   );
 

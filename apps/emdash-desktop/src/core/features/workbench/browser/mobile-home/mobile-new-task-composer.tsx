@@ -1,28 +1,44 @@
 import { Button, Select } from '@emdash/ui/react/primitives';
-import { ArrowUp, FolderClosed } from 'lucide-react';
+import { ArrowUp, Cpu, FolderClosed, ShieldCheck, ShieldOff } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
+import { hostRefFromConnectionId } from '@core/features/agents/api/browser/client';
+import { useAgents } from '@core/features/agents/api/browser/use-agents';
+import { useNewChatModelOptions } from '@core/features/conversations/api/browser/discovered-models';
 import { useEffectiveProvider } from '@core/features/conversations/api/browser/use-effective-provider';
 import {
   asAvailableProject,
   getProjectManagerStore,
   getProjectSshConnectionId,
 } from '@core/features/projects/api/browser/stores/project-selectors';
+import { useTaskSettings } from '@core/features/tasks/api/browser/hooks/useTaskSettings';
+import {
+  AUTO_APPROVE_PREFERENCE_KEY,
+  CHAT_UI_PREFERENCE_KEY,
+} from '@core/features/tasks/contributions/browser/task-config/initial-conversation-section';
 import { useOpenModal } from '@core/manifests/browser/modal-api';
+import { agentSupportsAcp, agentSupportsAutoApprove } from '@core/primitives/agents/api';
+import { useLocalStorage } from '@core/primitives/react-hooks/browser/useLocalStorage';
 import { agentLabel } from './mobile-home-model';
 
 const CHIP_CLASS =
   'flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-background-2 px-3 text-[13px] text-foreground-muted';
 
+/** Select value for "let the agent CLI pick its default model". */
+const DEFAULT_MODEL_VALUE = '';
+
 /**
- * Bottom composer of the mobile home. It collects the prompt and project, then
- * hands off to the existing create-task modal (the only task-creation path) with
- * the prompt prefilled, so naming, workspace and agent options stay in one place.
+ * Bottom composer of the mobile home. It collects the prompt, project, model and
+ * auto-approve choice, then hands off to the existing create-task modal (the only
+ * task-creation path) prefilled with them, so naming and workspace options stay in
+ * one place. Effort and permission mode are session options: they appear in the chat
+ * composer once the agent starts.
  */
 export const MobileNewTaskComposer = observer(function MobileNewTaskComposer() {
   const openTaskModal = useOpenModal('taskModal');
   const [prompt, setPrompt] = useState('');
   const [chosenProjectId, setChosenProjectId] = useState<string | undefined>();
+  const [chosenModel, setChosenModel] = useState(DEFAULT_MODEL_VALUE);
 
   const projects = [...getProjectManagerStore().projects.values()].filter((project) =>
     asAvailableProject(project)
@@ -30,13 +46,30 @@ export const MobileNewTaskComposer = observer(function MobileNewTaskComposer() {
   const projectId = projects.some((p) => p.id === chosenProjectId)
     ? chosenProjectId
     : projects[0]?.id;
-  const { providerId } = useEffectiveProvider(
-    projectId ? getProjectSshConnectionId(projectId) : undefined
+  const connectionId = projectId ? getProjectSshConnectionId(projectId) : undefined;
+  const { providerId } = useEffectiveProvider(connectionId);
+  const { data: agents } = useAgents(hostRefFromConnectionId(connectionId));
+  const capabilities = agents?.find((agent) => agent.id === providerId)?.capabilities;
+
+  // Same remembered preferences the create-task modal reads when it opens.
+  const { autoApproveByDefault } = useTaskSettings();
+  const [autoApprovePreference, setAutoApprovePreference] = useLocalStorage(
+    AUTO_APPROVE_PREFERENCE_KEY,
+    autoApproveByDefault
   );
+  const [useChatUiPreference] = useLocalStorage(CHAT_UI_PREFERENCE_KEY, false);
+  const canAutoApprove = agentSupportsAutoApprove(capabilities);
+  const autoApprove = canAutoApprove && autoApprovePreference;
+  const transport = agentSupportsAcp(capabilities) && useChatUiPreference ? 'acp' : 'pty';
+
+  const modelOptions = useNewChatModelOptions(providerId, connectionId, transport);
+  // A model chosen for another agent or project is not valid here: fall back to default.
+  const model = modelOptions && chosenModel in modelOptions ? chosenModel : DEFAULT_MODEL_VALUE;
+  const modelName = model ? (modelOptions?.[model]?.name ?? model) : 'Modelo por defecto';
 
   const canSend = Boolean(projectId) && prompt.trim().length > 0;
   const openModal = (initialPrompt: string) => {
-    void openTaskModal({ projectId, initialPrompt });
+    void openTaskModal({ projectId, initialPrompt, initialModel: model || undefined });
     setPrompt('');
   };
 
@@ -60,7 +93,7 @@ export const MobileNewTaskComposer = observer(function MobileNewTaskComposer() {
         autoComplete="off"
         className="min-h-11 bg-transparent text-base text-foreground outline-none placeholder:text-foreground-passive"
       />
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Select.Root
           value={projectId ?? ''}
           onValueChange={(value) => setChosenProjectId(value as string)}
@@ -93,14 +126,49 @@ export const MobileNewTaskComposer = observer(function MobileNewTaskComposer() {
         >
           <span className="truncate">{agentLabel(providerId) ?? 'Agente'}</span>
         </button>
-        <span className="flex-1" />
+        {modelOptions && Object.keys(modelOptions).length > 0 ? (
+          <Select.Root value={model} onValueChange={(value) => setChosenModel(value as string)}>
+            <Select.Trigger
+              aria-label="Modelo"
+              showChevron={false}
+              className={`${CHIP_CLASS} max-w-[55%] min-w-0`}
+            >
+              <Cpu aria-hidden="true" className="size-3.5 shrink-0" />
+              <span className="truncate">{modelName}</span>
+            </Select.Trigger>
+            <Select.Content width="content-at-least-trigger" align="start">
+              <Select.Item value={DEFAULT_MODEL_VALUE}>Modelo por defecto</Select.Item>
+              {Object.entries(modelOptions).map(([id, option]) => (
+                <Select.Item key={id} value={id}>
+                  {option.name}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Root>
+        ) : null}
+        {canAutoApprove ? (
+          <button
+            type="button"
+            aria-pressed={autoApprove}
+            aria-label="Auto-aprobar permisos"
+            className={`${CHIP_CLASS} ${autoApprove ? 'border-accent text-foreground' : ''}`}
+            onClick={() => setAutoApprovePreference(!autoApprove)}
+          >
+            {autoApprove ? (
+              <ShieldCheck aria-hidden="true" className="size-3.5 shrink-0" />
+            ) : (
+              <ShieldOff aria-hidden="true" className="size-3.5 shrink-0" />
+            )}
+            <span>{autoApprove ? 'Auto-aprobar' : 'Pedir permiso'}</span>
+          </button>
+        ) : null}
         <Button
           type="submit"
           variant="primary"
           icon
           aria-label="Crear tarea"
           disabled={!canSend}
-          className="size-11 min-h-11 min-w-11 rounded-full"
+          className="ml-auto size-11 min-h-11 min-w-11 rounded-full"
         >
           <ArrowUp aria-hidden="true" className="size-[18px]" />
         </Button>
