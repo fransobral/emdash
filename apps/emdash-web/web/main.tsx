@@ -26,6 +26,7 @@ import '@renderer/index.css';
 import 'devicon/devicon.min.css';
 import 'katex/dist/katex.min.css';
 import './mobile.css';
+import './tablet.css';
 import { getNavigation } from '@core/primitives/navigation/browser/navigation-selectors';
 import { createAppScope } from '@core/primitives/scoped-stores/browser';
 import { appSubject } from '@core/primitives/subjects/api';

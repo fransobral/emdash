@@ -56,7 +56,7 @@ function PageLayoutRoot({
     <div className={cx(styles.outer, className)}>
       <div className={cx(styles.scroll, draggable && styles.dragRegion)}>
         {sidebar ? (
-          <div className={styles.containerGrid}>
+          <div className={styles.containerGrid} data-page-layout="grid">
             <div className={cx(styles.gridPane, mobileView === 'content' && styles.hiddenOnMobile)}>
               {sidebar}
             </div>

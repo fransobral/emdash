@@ -1,0 +1,217 @@
+/*
+ * Mdash tablet layer — touch-first overrides for the self-hosted web build.
+ *
+ * Scope: only touch devices at tablet width (Huawei MatePad, iPad…). Desktop
+ * (fine pointer) and phone (<768px, handled by mobile.css) are untouched.
+ * Upstream components stay as-is; this file only adjusts size, spacing and
+ * surfaces through stable hooks (data-slot, role, aria-label) so rebases on
+ * generalaction/emdash keep working. Delete the import in main.tsx to disable.
+ */
+
+@media (pointer: coarse) and (min-width: 768px) {
+  :root {
+    --mdash-target: 44px;
+    --mdash-row: 48px;
+    --mdash-radius: 12px;
+  }
+
+  /* Slightly larger base type: every rem-based size scales with it. */
+  html {
+    font-size: 106.25%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Text you read or edit stays selectable. */
+  input,
+  textarea,
+  [contenteditable='true'],
+  pre,
+  code,
+  .monaco-editor,
+  .xterm,
+  [data-slot='textarea'],
+  .prose,
+  .markdown {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  button,
+  a,
+  [role='button'],
+  [role='tab'],
+  [role='menuitem'],
+  [role='option'],
+  [role='switch'],
+  [role='checkbox'],
+  summary,
+  label {
+    touch-action: manipulation;
+  }
+
+  /* ── Touch targets ─────────────────────────────────────────────────── */
+
+  /* Generic buttons: at least 44px tall; icon-only ones 44×44. */
+  button:not([aria-label='Minimize'], [aria-label='Maximize'], [aria-label='Close']),
+  [role='button'],
+  [data-slot='button'],
+  [data-slot='select-trigger'],
+  [data-slot='combobox-trigger'],
+  [data-slot='dropdown-menu-trigger'] {
+    min-height: var(--mdash-target);
+  }
+
+  button:has(> svg:only-child),
+  [role='button']:has(> svg:only-child) {
+    min-width: var(--mdash-target);
+  }
+
+  /* Menu rows, list rows and sidebar items: 48px, comfortable for thumbs. */
+  [role='menuitem'],
+  [role='menuitemcheckbox'],
+  [role='menuitemradio'],
+  [role='option'],
+  [data-slot='dropdown-menu-item'],
+  [data-slot='dropdown-menu-sub-trigger'],
+  [data-slot='dropdown-menu-checkbox-item'],
+  [data-slot='dropdown-menu-radio-item'],
+  [data-slot='context-menu-item'],
+  [data-slot='select-item'],
+  [data-slot='combobox-item'],
+  [data-sidebar='menu-button'],
+  li > button,
+  li > a {
+    min-height: var(--mdash-row);
+  }
+
+  [role='tab'],
+  [data-slot='tabs-tab'],
+  [data-slot='toggle-group-item'],
+  [data-slot='toggle'] {
+    min-height: var(--mdash-target);
+    padding-inline: 14px;
+  }
+
+  input:not([type='checkbox'], [type='radio'], [type='range']),
+  select,
+  [data-slot='input-group'] {
+    min-height: var(--mdash-target);
+    font-size: max(1rem, 16px);
+  }
+
+  textarea,
+  [data-slot='textarea'] {
+    font-size: max(1rem, 16px);
+  }
+
+  /* Switches and checkboxes: enlarge the hit area without redrawing them. */
+  [role='switch'],
+  [data-slot='switch'],
+  [role='checkbox'],
+  [data-slot='checkbox'] {
+    position: relative;
+  }
+
+  [role='switch']::after,
+  [data-slot='switch']::after,
+  [role='checkbox']::after,
+  [data-slot='checkbox']::after {
+    content: '';
+    position: absolute;
+    inset: -12px;
+  }
+
+  /* Floating surfaces: rounder, deeper, roomier for fingers. */
+  [data-slot='dropdown-menu-content'],
+  [data-slot='dropdown-menu-sub-content'],
+  [data-slot='context-menu-content'],
+  [data-slot='select-content'],
+  [data-slot='combobox-content'],
+  [data-slot='popover-content'] {
+    border-radius: var(--mdash-radius);
+    padding: 6px;
+    box-shadow:
+      0 2px 6px rgb(0 0 0 / 18%),
+      0 18px 48px rgb(0 0 0 / 32%);
+  }
+
+  [data-slot='dialog-content'] {
+    border-radius: 16px;
+  }
+
+  /* Hover tooltips cannot be reached by touch and linger after a tap. */
+  [data-slot='tooltip-content'] {
+    display: none;
+  }
+
+  /* ── Scrolling ─────────────────────────────────────────────────────── */
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--foreground) 22%, transparent) transparent;
+  }
+
+  /* ── Focus & feedback ──────────────────────────────────────────────── */
+
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--foreground) 55%, transparent);
+    outline-offset: 2px;
+  }
+
+  button:active:not(:disabled),
+  [role='button']:active,
+  [role='tab']:active,
+  [role='menuitem']:active,
+  [role='option']:active {
+    transition: transform 80ms cubic-bezier(0.2, 0, 0, 1);
+    transform: scale(0.98);
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--foreground) 22%, transparent);
+  }
+
+  /* Keyboard-shortcut hints mean nothing without a keyboard. */
+  kbd,
+  [data-slot='dropdown-menu-shortcut'],
+  [data-slot='kbd'] {
+    display: none !important;
+  }
+
+  /* ── Page layout (settings / library) ──────────────────────────────── */
+
+  [data-page-layout='grid'] {
+    gap: 2.5rem;
+  }
+}
+
+/* Portrait tablet: three columns do not fit; tighten the inner page grid. */
+@media (pointer: coarse) and (min-width: 768px) and (orientation: portrait) {
+  [data-page-layout='grid'] {
+    grid-template-columns: 11.5rem minmax(0, 1fr);
+    gap: 1.25rem;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+
+  [data-slot='list-row'] {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+}
+
+/* Installed as an app: respect notches/system bars. */
+@media (pointer: coarse) and (min-width: 768px) and (display-mode: standalone) {
+  body {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+    box-sizing: border-box;
+  }
+}
