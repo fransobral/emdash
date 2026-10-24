@@ -215,3 +215,40 @@
     box-sizing: border-box;
   }
 }
+
+/* ---- v2: portrait tablet — bottom tab bar + sidebar as drawer ---- */
+.mdash-tabbar, .mdash-drawer-scrim { display: none; }
+@media (pointer: coarse) and (min-width: 768px) and (orientation: portrait) {
+  :root { --mdash-tabbar-h: calc(64px + env(safe-area-inset-bottom, 0px)); }
+  #root { height: calc(100dvh - var(--mdash-tabbar-h)) !important; }
+  #workspace-left, #workspace-left + [data-slot='resizable-handle'], #workspace-left + [role='separator'] { display: none !important; }
+  html[data-tablet-drawer] #workspace-left {
+    display: flex !important; position: fixed !important; z-index: 60;
+    top: 0; left: 0; bottom: var(--mdash-tabbar-h);
+    width: min(22rem, 85vw) !important; max-width: none !important;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / .08), 0 24px 48px -12px rgb(0 0 0 / .45);
+    padding-top: env(safe-area-inset-top, 0px);
+    animation: mdash-drawer-in 220ms cubic-bezier(.2,.8,.2,1);
+  }
+  .mdash-drawer-scrim { display: block; position: fixed; inset: 0 0 var(--mdash-tabbar-h) 0; z-index: 59; background: rgb(0 0 0 / .4); }
+  .mdash-tabbar {
+    display: flex; position: fixed; z-index: 61; left: 0; right: 0; bottom: 0;
+    height: var(--mdash-tabbar-h); padding: 0 env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);
+    background: var(--em-surface, var(--background, Canvas));
+    border-top: 1px solid var(--border, rgb(127 127 127 / .2));
+  }
+  .mdash-tab {
+    flex: 1 1 0; min-width: 48px; min-height: 64px !important; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 500;
+    color: var(--foreground-tertiary-muted, currentColor); opacity: .75; background: none; border: 0;
+    transition: color 150ms, opacity 150ms;
+  }
+  .mdash-tab[aria-current='page'] { opacity: 1; color: var(--foreground, currentColor); }
+  .mdash-tab[aria-current='page'] svg { stroke-width: 2.25; }
+  .mdash-tab:active { transform: scale(.96); }
+  @keyframes mdash-drawer-in { from { transform: translateX(-100%); } to { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { html[data-tablet-drawer] #workspace-left { animation: none; } }
+}
+@media (pointer: coarse) and (min-width: 768px) and (orientation: portrait) and (display-mode: standalone) {
+  body { padding-bottom: 0; }
+}
