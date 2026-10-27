@@ -220,7 +220,8 @@
 .mdash-tabbar, .mdash-drawer-scrim { display: none; }
 @media (pointer: coarse) and (min-width: 768px) and (orientation: portrait) {
   :root { --mdash-tabbar-h: calc(64px + env(safe-area-inset-bottom, 0px)); }
-  #root { height: calc(100dvh - var(--mdash-tabbar-h)) !important; }
+  /* mobile.css sets min-height:100dvh on #root, which beat the height and pushed the composer under the tab bar. */
+  #root { height: calc(100dvh - var(--mdash-tabbar-h)) !important; min-height: 0 !important; max-height: calc(100dvh - var(--mdash-tabbar-h)) !important; }
   #workspace-left, #workspace-left + [data-slot='resizable-handle'], #workspace-left + [role='separator'] { display: none !important; }
   html[data-tablet-drawer] #workspace-left {
     display: flex !important; position: fixed !important; z-index: 60;
@@ -272,5 +273,14 @@
   #workspace-left [class~="group/row"] > div:first-child > button:has(> svg) {
     width: 36px;
     height: 36px;
+  }
+}
+
+/* ---- v4: portrait tab bar vs. floating layers ----
+ * Popovers, menus and comboboxes are portaled to <body> with z-index 50; the tab bar is 61.
+ * Lift portaled layers above the tab bar (and the drawer) so they are never covered. */
+@media (pointer: coarse) and (min-width: 768px) and (orientation: portrait) {
+  body > div:not(#root, .monaco-aria-container, .context-view) > * {
+    z-index: 70 !important;
   }
 }
