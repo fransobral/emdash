@@ -252,3 +252,25 @@
 @media (pointer: coarse) and (min-width: 768px) and (orientation: portrait) and (display-mode: standalone) {
   body { padding-bottom: 0; }
 }
+
+/* ---- v3: sidebar rows ----
+ * The sidebar list is virtualized: each row is absolutely positioned in a slot whose height the
+ * virtualizer computes (44px on touch tablets, see sidebar-virtual-list.tsx). The generic 44px
+ * min-height above made inner buttons taller than the old 32px slot, so rows overflowed and
+ * looked shifted. Make the row element fill the 44px slot exactly. */
+@media (pointer: coarse) and (min-width: 768px) {
+  #workspace-left [data-slot="context-menu-trigger"] > [class~="group/row"] {
+    height: 44px;
+    min-height: 0;
+    box-sizing: border-box;
+    padding-block: 0;
+  }
+  /* Inner controls must not grow past the row. */
+  #workspace-left [class~="group/row"] button {
+    min-height: 0;
+  }
+  #workspace-left [class~="group/row"] > div:first-child > button:has(> svg) {
+    width: 36px;
+    height: 36px;
+  }
+}

@@ -23,7 +23,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { observer } from 'mobx-react-lite';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { projectViewDef } from '@core/features/projects/contributions/views';
 import { getTaskStore } from '@core/features/tasks/api/browser/task-state/task-selectors';
@@ -43,9 +43,29 @@ const ROW_HEIGHT = 32;
 // on phones rows grow to a 44px touch target (items use `max-md:h-11`).
 const MOBILE_ROW_HEIGHT = 44;
 
+// Touch tablets (>= 768px, coarse pointer) get the same 44px rows as phones; the matching
+// item height lives in the web build's tablet.css. Keep both in sync.
+const TOUCH_TABLET_QUERY = '(pointer: coarse) and (min-width: 768px)';
+
+function subscribeTouchTablet(onChange: () => void): () => void {
+  const query = window.matchMedia(TOUCH_TABLET_QUERY);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+
+function useTouchTablet(): boolean {
+  return useSyncExternalStore(
+    subscribeTouchTablet,
+    () => window.matchMedia(TOUCH_TABLET_QUERY).matches,
+    () => false
+  );
+}
+
 export const SidebarVirtualList = observer(function SidebarVirtualList() {
   const rows = getSidebarStore().sidebarRows;
-  const rowHeight = useMobileViewport() ? MOBILE_ROW_HEIGHT : ROW_HEIGHT;
+  const isMobile = useMobileViewport();
+  const isTouchTablet = useTouchTablet();
+  const rowHeight = isMobile || isTouchTablet ? MOBILE_ROW_HEIGHT : ROW_HEIGHT;
   const { currentView } = useWorkspaceSlots();
   const taskParams = useViewParams(taskViewDef) ?? {
     projectId: undefined,
