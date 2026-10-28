@@ -221,6 +221,8 @@
 @media (pointer: coarse) and (min-width: 768px) and (orientation: portrait) {
   :root { --mdash-tabbar-h: calc(64px + env(safe-area-inset-bottom, 0px)); }
   /* mobile.css sets min-height:100dvh on #root, which beat the height and pushed the composer under the tab bar. */
+  /* vh fallback first: browsers without dvh (older Huawei/Chromium WebViews) drop the dvh lines. */
+  #root { height: calc(100vh - var(--mdash-tabbar-h)) !important; min-height: 0 !important; max-height: calc(100vh - var(--mdash-tabbar-h)) !important; }
   #root { height: calc(100dvh - var(--mdash-tabbar-h)) !important; min-height: 0 !important; max-height: calc(100dvh - var(--mdash-tabbar-h)) !important; }
   #workspace-left, #workspace-left + [data-slot='resizable-handle'], #workspace-left + [role='separator'] { display: none !important; }
   html[data-tablet-drawer] #workspace-left {
