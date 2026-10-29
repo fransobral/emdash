@@ -1,0 +1,31 @@
+--- a/dist/acp-agent.js
++++ b/dist/acp-agent.js
+@@ -1,5 +1,19 @@
+ import { agent as acpAgent, CreateElicitationResponse, methods, ndJsonStream, RequestError, } from "@agentclientprotocol/sdk";
+ import { deleteSession, getSessionMessages, listSessions, query, } from "@anthropic-ai/claude-agent-sdk";
++// emdash patch: tail-load on resume - replay only the last EMDASH_RESUME_MAX_TURNS (default 100) user turns
++const EMDASH_RESUME_MAX_TURNS = Number(process.env.EMDASH_RESUME_MAX_TURNS) > 0 ? Number(process.env.EMDASH_RESUME_MAX_TURNS) : 100;
++function emdashTailMessages(messages) {
++    if (!Array.isArray(messages)) return messages;
++    let seen = 0;
++    for (let i = messages.length - 1; i >= 0; i--) {
++        const m = messages[i];
++        if (m?.type !== "user") continue;
++        const c = m.message?.content;
++        const isPrompt = typeof c === "string" || (Array.isArray(c) && c.some((b) => b?.type === "text"));
++        if (isPrompt && ++seen >= EMDASH_RESUME_MAX_TURNS) return i > 0 ? messages.slice(i) : messages;
++    }
++    return messages;
++}
+ import { GOAL_ACTIONS, GOAL_CONTROL_METHOD, GOAL_EXTENSION_VERSION, goalUpdateFromPrompt, parseGoalRequest, toGoalSnapshot, } from "./goal-extension.js";
+ import { sanitizeTitle, SessionTitles } from "./session-titles.js";
+ import { AIR_NATIVE_SUBAGENT_SESSIONS_CAPABILITY, asSdkSessionNotification, clientSupportsSubagents, } from "./acp-subagents.js";
+@@ -1189,7 +1203,7 @@
+         const resumedSession = await readResumedSession(params.sessionId, this.logger);
+         const result = await this.getOrCreateSession(params, resumedSession);
+         timing.phase("session-ready");
+-        await this.replaySessionHistory(params.sessionId, resumedSession.messages);
++        await this.replaySessionHistory(params.sessionId, emdashTailMessages(resumedSession.messages));
+         timing.phase("replay");
+         // Send available commands after replay so it doesn't interleave with history
+         setTimeout(() => {
