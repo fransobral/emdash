@@ -1,0 +1,51 @@
+# Hot-patch applied in place to node_modules/@agentclientprotocol/codex-acp/dist/index.js on chulo (not registered in pnpm; re-apply after pnpm install).
+# Caps turns fetched on session/load to EMDASH_RESUME_MAX_TURNS (default 100) instead of paging the whole thread.
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -33444,6 +33444,7 @@
+ var SUPPORTED_GATEWAY_PROTOCOLS = {
+   openai: "responses"
+ };
++const RESUME_MAX_TURNS = Number(process.env.EMDASH_RESUME_MAX_TURNS) > 0 ? Number(process.env.EMDASH_RESUME_MAX_TURNS) : 100; // emdash patch: tail-load on resume
+ var CodexAcpClient = class {
+   codexClient;
+   config;
+@@ -33853,8 +33854,8 @@
+     onSubscribed?.();
+     const thread = response.thread.historyMode === "paginated" ? {
+       ...response.thread,
+-      turns: response.turnsBackwardsCursor === null ? [] : await this.codexClient.threadReadHistory(response.thread.id, response.turnsBackwardsCursor)
+-    } : (await this.codexClient.threadReadWithHistory(response.thread.id)).thread;
++      turns: response.turnsBackwardsCursor === null ? [] : await this.codexClient.threadReadHistory(response.thread.id, response.turnsBackwardsCursor, RESUME_MAX_TURNS)
++    } : (await this.codexClient.threadReadWithHistory(response.thread.id, RESUME_MAX_TURNS)).thread;
+     const codexModels = await this.fetchAvailableModels();
+     const currentModelId = this.createModelId(codexModels, response.model, response.reasoningEffort).toString();
+     return {
+@@ -34887,15 +34888,15 @@
+   async threadTurnsList(params) {
+     return await this.sendRequest({ method: "thread/turns/list", params });
+   }
+-  async threadReadWithHistory(threadId) {
++  async threadReadWithHistory(threadId, maxTurns = Infinity) {
+     const response = await this.threadRead({ threadId });
+     if (response.thread.historyMode === "legacy") {
+       return await this.threadRead({ threadId, includeTurns: true });
+     }
+-    const turns = await this.threadReadHistory(threadId);
++    const turns = await this.threadReadHistory(threadId, null, maxTurns);
+     return { ...response, thread: { ...response.thread, turns } };
+   }
+-  async threadReadHistory(threadId, initialCursor = null) {
++  async threadReadHistory(threadId, initialCursor = null, maxTurns = Infinity) {
+     const turns = [];
+     const seenCursors = /* @__PURE__ */ new Set();
+     if (initialCursor !== null) seenCursors.add(initialCursor);
+@@ -34916,7 +34917,7 @@
+         }
+         seenCursors.add(cursor);
+       }
+-    } while (cursor !== null);
++    } while (cursor !== null && turns.length < maxTurns);
+     return turns.reverse();
+   }
+   async threadArchive(params) {
