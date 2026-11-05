@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { getTaskManagerStore } from '@core/features/tasks/api/browser/task-state/task-selectors';
 import { buildCreateTaskParams } from '@core/features/tasks/api/build-create-task-params';
 import type { InitialConversationState } from '@core/features/tasks/contributions/browser/task-config/initial-conversation-section';
@@ -23,13 +23,22 @@ export function useCreateTaskCallback({
   navigate,
   onCreated,
 }: UseCreateTaskCallbackParams): { handleCreateTask: () => void; canCreate: boolean } {
-  const canCreate = !!selectedProjectId && state.isValid;
+  const submitting = useRef(false);
+  const canCreate = !!selectedProjectId && state.isValid && initialConversation.settingsReady;
 
-  const handleCreateTask = useCallback(() => {
-    if (!selectedProjectId) return;
+  const handleCreateTask = useCallback(async () => {
+    if (!selectedProjectId || !canCreate || submitting.current) return;
     const taskManager = getTaskManagerStore(selectedProjectId);
     if (!taskManager) return;
 
+    submitting.current = true;
+    try {
+      await initialConversation.flushSettings();
+    } catch (error) {
+      submitting.current = false;
+      log.error('Could not save conversation settings', error);
+      return;
+    }
     const id = crypto.randomUUID();
     const initial = buildInitialConversation(initialConversation);
     void taskManager
@@ -55,7 +64,7 @@ export function useCreateTaskCallback({
 
     navigate(taskViewDef({ projectId: selectedProjectId, taskId: id }));
     onCreated();
-  }, [selectedProjectId, state, initialConversation, navigate, onCreated]);
+  }, [selectedProjectId, state, initialConversation, navigate, onCreated, canCreate]);
 
-  return { handleCreateTask, canCreate };
+  return { handleCreateTask: () => void handleCreateTask(), canCreate };
 }

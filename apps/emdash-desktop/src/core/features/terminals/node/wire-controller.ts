@@ -517,14 +517,16 @@ async function resolveTerminalContext(
   scopeId: string
 ): Promise<Result<TerminalContext, TerminalControllerError>> {
   const identity = launchContext.workspace;
+  const sessionId = makePtySessionId(terminal.projectId, scopeId, terminal.id);
   const gitCredentials = await options.resolveSessionGitCredentials({
+    sessionId,
     projectId: terminal.projectId,
     host: identity.host,
   });
   return ok({
     identity,
     workspace: workspaceRef(identity),
-    key: toTerminalKey(identity, makePtySessionId(terminal.projectId, scopeId, terminal.id)),
+    key: toTerminalKey(identity, sessionId),
     tmuxEnabled: launchContext.tmux,
     shellSetup: launchContext.shellSetup,
     taskEnvVars: launchContext.env,

@@ -52,7 +52,7 @@ describe('Codex usage-limit failover', () => {
 
     const rt = new AcpRuntime(h.deps);
     const input = makeStartInput({ conversationId: 'conv-codex', providerId: 'codex' });
-    await rt.launchSession(input);
+    await rt.startSession(input, 'resume');
     expect(h.children).toHaveLength(1);
 
     const sendResult = await rt.sendPrompt('conv-codex', { text: 'hello' });
@@ -83,7 +83,10 @@ describe('Codex usage-limit failover', () => {
     agent.prompt.mockRejectedValueOnce(usageLimitError);
 
     const rt = new AcpRuntime(h.deps);
-    await rt.launchSession(makeStartInput({ conversationId: 'conv-codex', providerId: 'codex' }));
+    await rt.startSession(
+      makeStartInput({ conversationId: 'conv-codex', providerId: 'codex' }),
+      'resume'
+    );
     expect(h.children).toHaveLength(1);
 
     const sendResult = await rt.sendPrompt('conv-codex', { text: 'hello' });

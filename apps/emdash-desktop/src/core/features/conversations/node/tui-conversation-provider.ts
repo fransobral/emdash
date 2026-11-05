@@ -49,6 +49,7 @@ export type TuiConversationProviderDependencies = {
    * session env by the tui-agents runtime through the blessed builder.
    */
   resolveSessionGitCredentials(params: {
+    sessionId: string;
     projectId: string;
     host: HostRef;
   }): Promise<GitCredentialsSessionSpec | undefined>;
@@ -94,7 +95,7 @@ export class TuiConversationProvider implements ConversationProvider {
     const agentSession = resolveAgentSession(conversation, mode);
     const result = agentSession.isResuming
       ? await this.tuiAgents.resume(input)
-      : await this.tuiAgents.start(input);
+      : await this.tuiAgents.startSession(input);
     if (!result.success) {
       throw new Error(`TUI session failed to start: ${JSON.stringify(result.error)}`);
     }
@@ -134,6 +135,7 @@ export class TuiConversationProvider implements ConversationProvider {
     const agentSession = resolveAgentSession(conversation, mode);
     const effectiveInitialPrompt =
       !agentSession.isResuming && mode === 'start' ? initialPrompt : undefined;
+    const sessionId = makePtySessionId(this.projectId, this.taskId, conversation.id);
     const [providerConfig, taskSettings, colorEnv, launchContext, gitCredentials, agentAccountEnv] =
       await Promise.all([
         this.dependencies.getProviderConfig(conversation.providerId),
@@ -143,6 +145,7 @@ export class TuiConversationProvider implements ConversationProvider {
         this.dependencies.getTerminalColorEnv(),
         this.launchContextSource.resolve(),
         this.dependencies.resolveSessionGitCredentials({
+          sessionId,
           projectId: this.projectId,
           host: this.host,
         }),
@@ -162,7 +165,6 @@ export class TuiConversationProvider implements ConversationProvider {
       ...launchContext.data.env,
       ...agentAccountEnv,
     };
-    const sessionId = makePtySessionId(this.projectId, this.taskId, conversation.id);
 
     return {
       conversationId: conversation.id,

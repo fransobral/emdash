@@ -59,6 +59,10 @@ export function createWorkspaceWireController(deps: WorkspaceWireControllerDeps)
       sendPrompt: (input, meta) =>
         deps.runtimes.acp.sendPrompt(input, { signal: meta.signal, timeoutMs: 0 }),
     },
+    providerUsage: forwardContractImpl(
+      workspaceWireContract.providerUsage,
+      deps.runtimes.providerUsage
+    ),
     agentConfig: forwardContractImpl(workspaceWireContract.agentConfig, deps.runtimes.agentConfig),
     automations: forwardContractImpl(workspaceWireContract.automations, deps.runtimes.automations),
     conversations: forwardContractImpl(
@@ -67,6 +71,7 @@ export function createWorkspaceWireController(deps: WorkspaceWireControllerDeps)
     ),
     fileSearch: forwardContractImpl(workspaceWireContract.fileSearch, deps.runtimes.fileSearch),
     files: forwardContractImpl(workspaceWireContract.files, deps.runtimes.files),
+    lsp: forwardContractImpl(workspaceWireContract.lsp, deps.runtimes.lsp),
     git: forwardContractImpl(workspaceWireContract.git, deps.runtimes.git),
     hostSettings: forwardContractImpl(
       workspaceWireContract.hostSettings,
@@ -79,6 +84,9 @@ export function createWorkspaceWireController(deps: WorkspaceWireControllerDeps)
     ),
     terminals: forwardContractImpl(workspaceWireContract.terminals, deps.runtimes.terminals),
     tuiAgents: forwardContractImpl(workspaceWireContract.tuiAgents, deps.runtimes.tuiAgents),
+    // Forwarded calls keep each registry verb's own call deadline: the long-running
+    // ones (worktree creation, activation, removals, artifact cleaning) declare none in
+    // the contract.
     workspaceRegistry: forwardContractImpl(
       workspaceWireContract.workspaceRegistry,
       deps.runtimes.workspaceRegistry

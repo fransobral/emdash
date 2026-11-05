@@ -1,6 +1,6 @@
 import { hostRef, LOCAL_HOST_REF } from '@emdash/core/primitives/host/api';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createConversation, initialAcpModeId } from './createConversation';
+import { createConversation } from './createConversation';
 
 vi.mock('@core/features/conversations/api/node', () => ({
   conversationWireEvents: { emit: vi.fn() },
@@ -155,10 +155,12 @@ describe('createConversation', () => {
     await createConversation(
       {
         ...baseParams,
-        model: 'sonnet',
-        modeId: 'agent-full-access',
-        effort: 'high',
-        collaborationMode: 'plan',
+        options: {
+          model: 'sonnet',
+          mode: 'agent-full-access',
+          reasoning_effort: 'high',
+          collaboration_mode: 'plan',
+        },
       },
       dependencies()
     );
@@ -166,10 +168,12 @@ describe('createConversation', () => {
     expect(hostConversations.create).toHaveBeenCalledWith(
       expect.objectContaining({
         config: expect.objectContaining({
-          model: 'sonnet',
-          modeId: 'agent-full-access',
-          effort: 'high',
-          collaborationMode: 'plan',
+          options: {
+            model: 'sonnet',
+            mode: 'agent-full-access',
+            reasoning_effort: 'high',
+            collaboration_mode: 'plan',
+          },
         }),
       })
     );
@@ -223,18 +227,3 @@ describe('createConversation', () => {
   });
 });
 
-describe('initialAcpModeId', () => {
-  it("starts auto-approved chats in the agent's own auto mode", () => {
-    expect(initialAcpModeId({ provider: 'claude', autoApprove: true, modeId: 'default' })).toBe(
-      'auto'
-    );
-    expect(initialAcpModeId({ provider: 'codex', autoApprove: true })).toBe('agent-full-access');
-  });
-
-  it('keeps the remembered mode when auto-approve is off or the agent has no auto mode', () => {
-    expect(initialAcpModeId({ provider: 'claude', autoApprove: false, modeId: 'plan' })).toBe(
-      'plan'
-    );
-    expect(initialAcpModeId({ provider: 'goose', autoApprove: true, modeId: 'x' })).toBe('x');
-  });
-});

@@ -17,6 +17,13 @@ import type { GitContract } from '@emdash/core/runtimes/git/api';
 import { gitWorkerSpec } from '@emdash/core/runtimes/git/node';
 import type { HostSettingsContract } from '@emdash/core/runtimes/host-settings/api';
 import { hostSettingsWorkerSpec } from '@emdash/core/runtimes/host-settings/node';
+import { lspContract, type LspContract } from '@emdash/core/runtimes/lsp/api';
+import { lspWorkerSpec } from '@emdash/core/runtimes/lsp/node';
+import {
+  providerUsageContract,
+  type ProviderUsageContract,
+} from '@emdash/core/runtimes/provider-usage/api';
+import { providerUsageWorkerSpec } from '@emdash/core/runtimes/provider-usage/node';
 import type { ResourceUsageContract } from '@emdash/core/runtimes/resource-usage/api';
 import { resourceUsageWorkerSpec } from '@emdash/core/runtimes/resource-usage/node';
 import type { ScriptsContract } from '@emdash/core/runtimes/scripts/api';
@@ -30,6 +37,7 @@ import { workspaceRegistryWorkerSpec } from '@emdash/core/runtimes/workspace-reg
 import { buildDescriptorFromProvider } from '@emdash/core/services/agent-plugins/api/plugins';
 import { NodeExecutionContext } from '@emdash/core/services/exec/api';
 import { fsWatchWorkerSpec } from '@emdash/core/services/fs-watch/node';
+import { gitCredentialChannelsContract } from '@emdash/core/services/git-credential-channels/api';
 import {
   CORE_DEPENDENCIES,
   createHostDependenciesComponent,
@@ -43,7 +51,7 @@ import { pluginRegistry } from '@emdash/plugins/agents';
 import { ok } from '@emdash/shared';
 import type { Scope } from '@emdash/shared/concurrency';
 import type { Logger } from '@emdash/shared/logger';
-import { createController, type ContractClient } from '@emdash/wire/rpc';
+import { createController, queuedClient, type ContractClient } from '@emdash/wire/rpc';
 import { createWireWorkerHost } from '@emdash/wire/worker';
 import { childProcessSpawner } from '@emdash/wire/worker/node';
 import { workspaceServerRuntimePaths } from '../runtime/paths';
@@ -52,10 +60,12 @@ import { workspaceWorkerPath } from './worker-paths';
 export type WorkspaceServerRuntimeClients = {
   acp: ContractClient<AcpApiContract>;
   agentConfig: ContractClient<AgentConfigContract>;
+  providerUsage: ContractClient<ProviderUsageContract>;
   automations: ContractClient<AutomationsContract>;
   conversations: ContractClient<ConversationsContract>;
   fileSearch: ContractClient<FileSearchContract>;
   files: ContractClient<FilesContract>;
+  lsp: ContractClient<LspContract>;
   git: ContractClient<GitContract>;
   hostSettings: ContractClient<HostSettingsContract>;
   resourceUsage: ContractClient<ResourceUsageContract>;
@@ -84,6 +94,11 @@ export async function createWorkspaceServerRuntimeHost(
 ): Promise<WorkspaceServerRuntimeHost> {
   const env = options.shellEnv.env;
   const userShellEnv = createUserShellEnvController(() => options.shellEnv.current());
+  // Git credential channels are minted on the desktop loopback, which remote sessions
+  // cannot reach, so sessions here never receive one to release.
+  const gitCredentialChannels = createController(gitCredentialChannelsContract, {
+    release: async () => {},
+  });
   const paths = workspaceServerRuntimePaths(options.socketPath);
   await Promise.all([
     mkdir(paths.stateDirectory, { recursive: true }),
@@ -126,9 +141,17 @@ export async function createWorkspaceServerRuntimeHost(
       executable: workspaceWorkerPath('terminals'),
       env,
       userEnv: userShellEnv,
+      gitCredentialChannels,
       lifecycle: {
         terminal: { kind: 'while-attached', graceMs: DETACHED_TERMINAL_GRACE_MS },
       },
+    })
+  );
+  const lspWorker = workerHost.create(
+    ...lspWorkerSpec({
+      executable: workspaceWorkerPath('lsp'),
+      env,
+      dependencies: { userEnv: userShellEnv, hostDependencies: hostDependencies.client.resolver },
     })
   );
   const resourceUsagePromise = workerHost.spawn(
@@ -178,6 +201,17 @@ export async function createWorkspaceServerRuntimeHost(
       },
     })
   );
+  const providerUsageWorker = workerHost.create(
+    ...providerUsageWorkerSpec({
+      pluginRegistry,
+      executable: workspaceWorkerPath('provider-usage'),
+      env,
+      dependencies: {
+        hostDependencies: hostDependencies.client.resolver,
+        userEnv: userShellEnv,
+      },
+    })
+  );
   const tuiAgentsPromise = conversationsPromise.then((conversations) =>
     workerHost.spawn(
       ...tuiAgentsWorkerSpec({
@@ -188,6 +222,7 @@ export async function createWorkspaceServerRuntimeHost(
           hostDependencies: hostDependencies.client.resolver,
           conversations,
           userEnv: userShellEnv,
+          gitCredentialChannels,
         },
         intentsFilePath: paths.tuiAgentsIntentsFile,
       })
@@ -292,7 +327,7 @@ export async function createWorkspaceServerRuntimeHost(
         creationAdmission: createController(workspaceCreationAdmissionContract, {
           checkWorktreeCreation: async () => ok(undefined),
         }),
-        acpLauncher: acp,
+        acpSessions: acp,
         tuiSessions: tuiAgents,
         conversationIndex: conversations,
       },
@@ -304,6 +339,9 @@ export async function createWorkspaceServerRuntimeHost(
     runtimes: {
       acp,
       agentConfig,
+      providerUsage: queuedClient(providerUsageContract, () => providerUsageWorker.ready(), {
+        retryReadinessOnFailure: true,
+      }),
       automations,
       conversations,
       fileSearch,
@@ -311,6 +349,9 @@ export async function createWorkspaceServerRuntimeHost(
       git,
       hostSettings,
       resourceUsage,
+      lsp: queuedClient(lspContract, () => lspWorker.ready(), {
+        retryReadinessOnFailure: true,
+      }),
       scripts,
       terminals,
       tuiAgents,

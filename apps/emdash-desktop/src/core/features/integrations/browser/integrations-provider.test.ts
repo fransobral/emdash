@@ -51,12 +51,7 @@ type ProbeState = {
   connectedProviders: string[];
 };
 
-type ProbeActions = {
-  connectIntegration: (
-    integrationId: string,
-    input: Record<string, string>
-  ) => Promise<{ success: boolean; error?: string }>;
-};
+type ProbeActions = Pick<ReturnType<typeof useIntegrationsContext>, 'connectIntegration'>;
 
 function Probe({
   onActions,
@@ -186,9 +181,10 @@ describe('IntegrationsProvider', () => {
 
     await act(async () => {
       initialInventory.reject(unavailable);
-      await flushQueries();
+      // React Query queues the error notification only after the rejection propagates, so a
+      // timer started here can fire first; wait for the rendered error instead.
+      await vi.waitFor(() => expect(latest?.accountsError).toBe(unavailable));
     });
-    expect(latest?.accountsError).toBe(unavailable);
     expect(latest?.isLoadingAccounts).toBe(false);
 
     await act(async () => {
@@ -234,6 +230,34 @@ describe('IntegrationsProvider', () => {
 
     expect(result).toEqual({ success: false, error: 'Invalid token' });
     expect(latest?.linearIsMutating).toBe(false);
+  });
+
+  it('forwards the selected authentication method outside the credential payload', async () => {
+    await act(async () => {
+      root.render(
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          React.createElement(
+            IntegrationsProvider,
+            null,
+            React.createElement(Probe, {
+              onActions: (probeActions) => (actions = probeActions),
+              onRender: (state) => (latest = state),
+            })
+          )
+        )
+      );
+    });
+    const credentials = { siteUrl: 'https://example.atlassian.net', accessToken: 'oauth-token' };
+    await act(async () => {
+      await actions?.connectIntegration('jira', credentials, { authMethodId: 'bearer' });
+    });
+    expect(mocks.connectIntegration).toHaveBeenCalledWith({
+      integrationId: 'jira',
+      credentials,
+      authMethodId: 'bearer',
+    });
   });
 
   it('propagates unexpected connection errors', async () => {

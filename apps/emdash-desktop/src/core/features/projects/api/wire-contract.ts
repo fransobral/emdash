@@ -2,8 +2,13 @@ import {
   hostAbsolutePathSchema,
   portableRelativePathSchema,
 } from '@emdash/core/primitives/path/api';
-import { fileTreeModelSchema, fsErrorSchema } from '@emdash/core/runtimes/files/api';
+import { directoryListResultSchema, fsErrorSchema } from '@emdash/core/runtimes/files/api';
+import {
+  trustRepositoryErrorSchema,
+  trustRepositoryResultSchema,
+} from '@emdash/core/runtimes/git/api';
 import { projectConfigStateSchema } from '@emdash/core/runtimes/workspace-registry/api';
+import { runtimeResolveErrorSchema } from '@emdash/core/services/runtime-broker/api';
 import type { Result } from '@emdash/shared';
 import {
   defineContract,
@@ -12,7 +17,6 @@ import {
   liveJob,
   liveModel,
   liveState,
-  mutation,
   procedure,
 } from '@emdash/wire/rpc';
 import z from 'zod';
@@ -93,23 +97,24 @@ export const createProjectFromRemoteInputSchema = z.object({
   name: z.string().min(1),
 });
 
-export const projectDirectoryTreeKeySchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('local'),
-    root: hostAbsolutePathSchema,
-    sessionId: z.string(),
-  }),
-  z.object({
-    type: z.literal('ssh'),
-    connectionId: z.string().min(1),
-    root: hostAbsolutePathSchema,
-    sessionId: z.string(),
-  }),
-]);
-
 const projectIdInputSchema = z.object({
   projectId: z.string(),
 });
+
+export const trustProjectRepositoryInputSchema = z.object({
+  host: projectHostParamsSchema,
+  /** The directory whose inspection Git refused, as passed to `inspectProjectPath`. */
+  path: z.string().min(1),
+  /** The `safe.directory` value Git suggested and the user confirmed. */
+  safeDirectory: z.string().min(1),
+});
+
+export const trustProjectRepositoryErrorSchema = z.union([
+  trustRepositoryErrorSchema,
+  z.object({ type: z.literal('invalid-path'), message: z.string() }),
+  z.object({ type: z.literal('unsupported'), message: z.string() }),
+  runtimeResolveErrorSchema,
+]);
 
 export type ProjectListData = {
   projects: Project[];
@@ -125,6 +130,12 @@ export const projectsWireContract = defineContract({
   inspectProjectPath: procedure({
     input: z.custom<InspectProjectPathParams>(),
     output: z.custom<ProjectPathInspection>(),
+  }),
+  /** Adds Git's `safe.directory` entry for one refused repository after user confirmation. */
+  trustRepository: fallible({
+    input: trustProjectRepositoryInputSchema,
+    data: trustRepositoryResultSchema,
+    error: trustProjectRepositoryErrorSchema,
   }),
   initializeRepository: procedure({
     input: projectIdInputSchema,
@@ -151,13 +162,21 @@ export const projectsWireContract = defineContract({
     data: z.void(),
     error: fsErrorSchema,
   }),
+  /** One-shot listing of a host directory for the folder picker; nothing is watched. */
+  listHostDirectory: fallible({
+    input: z.object({ host: projectHostParamsSchema, path: hostAbsolutePathSchema }),
+    data: directoryListResultSchema,
+    error: fsErrorSchema,
+  }),
   resolveRepositoryDestination: procedure({
     input: z.custom<ResolveRepositoryDestinationParams>(),
     output: z.custom<Result<string, ProjectPlacementError>>(),
   }),
+  // Deleting a project waits for its worktrees' host removals, so no call deadline.
   deleteProject: procedure({
     input: projectIdInputSchema,
     output: z.void(),
+    callTimeoutMs: 0,
   }),
   getProjectSettingsPage: procedure({
     input: projectIdInputSchema,
@@ -228,40 +247,18 @@ export const projectsWireContract = defineContract({
       state: liveState({ data: projectCreationStateSchema }),
     },
   }),
-  directoryTree: liveModel({
-    key: projectDirectoryTreeKeySchema,
-    states: {
-      tree: liveState({ data: fileTreeModelSchema }),
-    },
-    mutations: {
-      expand: mutation({
-        input: z.object({
-          path: portableRelativePathSchema,
-          depth: z.number().int().min(1).max(2).optional(),
-        }),
-        data: z.void(),
-        error: fsErrorSchema,
-      }),
-      reveal: mutation({
-        input: z.object({
-          path: portableRelativePathSchema,
-          depth: z.number().int().min(1).max(2).optional(),
-        }),
-        data: z.void(),
-        error: fsErrorSchema,
-      }),
-    },
-  }),
   create: liveJob({
     input: createProjectFromRemoteInputSchema,
     progress: projectCreationProgressSchema,
     result: projectSchema,
     error: projectCreationErrorSchema,
   }),
+  // Like `deleteProject`: waits for the worktrees' host removals.
   delete: fallible({
     input: projectIdInputSchema,
     data: mutationAckSchema,
     error: mutationErrorSchema,
+    callTimeoutMs: 0,
   }),
 });
 
@@ -270,4 +267,5 @@ export type ProjectCreationJobError = z.infer<typeof projectCreationErrorSchema>
 export type ProjectCreationProgress = z.infer<typeof projectCreationProgressSchema>;
 export type CreateProjectFromRemoteInput = z.infer<typeof createProjectFromRemoteInputSchema>;
 export type ProjectHostParams = z.infer<typeof projectHostParamsSchema>;
+export type TrustProjectRepositoryError = z.output<typeof trustProjectRepositoryErrorSchema>;
 export type ProjectsWireContract = typeof projectsWireContract;

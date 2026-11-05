@@ -51,6 +51,10 @@ invalidate the list so a gap during a reload schedules another fetch. Failed rel
 current stores. An empty pane can still have background attention, but a task with no Conversations
 has no agent status indicator.
 
+Notification clicks wait for the task composition and saved conversation record, then resolve
+its tab kind through the Conversations API. Opening through the pane layout focuses an existing
+ACP chat or terminal conversation tab across panes; unavailable targets expire without opening a tab.
+
 The Tasks slice owns current-task workspace activation in its app-scoped
 `TaskActivationCoordinator`. It derives activation from navigation, Project context hydration,
 Task state, and Host generation readiness. Views and navigation handlers only express which Task
@@ -98,6 +102,14 @@ and a Reset UI state and reload fallback under "Still having trouble?". Reset di
 memento writes before clearing saved presentation state (including unsent drafts), and only reloads
 once deletion succeeds. A failed reset stays visible above the disclosures so it can be retried.
 
+## Diff Content
+
+Text diffs keep their Monaco editor mounted while both OpenFileStore facets load.
+Until a diff is first shown, loading and non-missing errors cover the editor. After that, a
+failing or reloading side keeps the last loaded diff visible and read-only under a banner;
+editing and saving resume when both facets recover.
+Missing Git sides and orphaned buffers render as empty sides for added and deleted files.
+
 ## Tests
 
 - Renderer unit tests: `src/renderer/tests/`
@@ -134,3 +146,9 @@ content determines presentation readiness; history, config, usage, plan, termina
 metadata must not block displaying it. Optional metadata has safe defaults while loading.
 Older runtimes without version metadata use the legacy synchronization path and cannot provide
 the same missed-update guarantees.
+
+
+## Editor language services
+
+See the [LSP runtime README](../../packages/core/src/runtimes/lsp/README.md) for
+server setup, architecture, editor integration and testing.

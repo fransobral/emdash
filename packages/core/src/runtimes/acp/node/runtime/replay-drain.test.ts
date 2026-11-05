@@ -32,7 +32,7 @@ describe('session load replay ordering', () => {
       return {};
     });
 
-    expect((await rt.launchSession(input)).success).toBe(true);
+    expect((await rt.startSession(input, 'resume')).success).toBe(true);
     await lagMicrotasks(100);
 
     const live = rt.sessionLiveModels(input.conversationId)!;

@@ -4,7 +4,6 @@ import {
   type HostRef,
   type SerializedHostRef,
 } from '@emdash/core/primitives/host/api';
-import { pluginRegistry } from '@emdash/plugins/agents';
 import { log } from '@emdash/shared/logger';
 import { eq } from 'drizzle-orm';
 import { conversationWireEvents } from '@core/features/conversations/api/node';
@@ -37,14 +36,6 @@ import { launchTuiConversation } from './launch-tui-conversation';
  * An auto-approved chat starts in the agent's own auto mode (Claude's `auto`,
  * Codex's full access) instead of whatever mode the last chat was left in.
  */
-export function initialAcpModeId(
-  params: Pick<CreateConversationParams, 'autoApprove' | 'modeId' | 'provider'>
-): string | undefined {
-  if (!params.autoApprove) return params.modeId;
-  const plugin = pluginRegistry.get(params.provider);
-  return plugin?.capabilities.autoApprove.acpModeId ?? params.modeId;
-}
-
 type ConversationCreateDb = Pick<AppDb, 'delete' | 'insert' | 'select' | 'update'>;
 
 export type CompensationRunner = <T>(options: {
@@ -103,17 +94,12 @@ export async function createConversation(
   const conversationType = params.type ?? 'pty';
 
   const initialQueue = params.initialQueue?.filter((prompt) => prompt.text.trim());
-  const modeId = initialAcpModeId(params);
   const configObj: ConversationConfig =
     conversationType === 'acp'
       ? {
           version: '1',
           type: 'acp',
-          ...(params.autoApprove !== undefined && { autoApprove: params.autoApprove }),
-          ...(params.model && { model: params.model }),
-          ...(modeId && { modeId }),
-          ...(params.effort && { effort: params.effort }),
-          ...(params.collaborationMode && { collaborationMode: params.collaborationMode }),
+          ...(params.options && { options: params.options }),
           ...(params.agentAccountId && { agentAccountId: params.agentAccountId }),
           ...(initialQueue?.length && { initialQueue }),
         }
@@ -182,7 +168,7 @@ export async function createConversation(
     throw new Error(`createConversation: inserted row for ${id} is missing its task link`);
   }
 
-  // ACP conversations start lazily on hydrateConversation — no PTY session here.
+  // ACP sessions start when chat calls startSession — no PTY session here.
   if (conversationType !== 'acp') {
     const launched = await withCompensation({
       action: () =>

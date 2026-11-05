@@ -75,6 +75,7 @@ export const TaskMainColumn = observer(function TaskMainColumn({
     storage: layoutStorage,
     panelIds: ['task-main-content', 'task-terminal-drawer'],
     collapsiblePanelId: 'task-terminal-drawer',
+    orientation: 'vertical',
     open: taskView.isTerminalDrawerOpen,
     onCloseRequest: () => taskView.chrome.commands.closeTerminalDrawer(),
     closeThreshold: TERMINAL_DRAWER_CLOSE_THRESHOLD,
@@ -121,11 +122,7 @@ export const TaskMainColumn = observer(function TaskMainColumn({
       {mobileWorkspace ? (
         <MobileActivePane />
       ) : (
-        <Resizable.Group
-          orientation="vertical"
-          id="task-main-vertical"
-          {...drawerBinding.groupProps}
-        >
+        <Resizable.Group id="task-main-vertical" {...drawerBinding.groupProps}>
           <Resizable.Panel id="task-main-content" minSize="30%">
             <SplitPaneLayout storage={layoutStorage} />
           </Resizable.Panel>

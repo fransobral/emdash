@@ -131,6 +131,7 @@ running (doctor reports it). See
 | Flow | Command | Where |
 | --- | --- | --- |
 | Local packaging | `pnpm run package` / `package:mac` / `package:linux` / `package:win` | `apps/emdash-desktop/` |
+| Packaged language-server regression check | `EMDASH_TEST_PACKAGED_LSP=1 pnpm exec vitest run --project scripts scripts/release/lib/packaged-language-servers.test.ts` | `apps/emdash-desktop/` |
 | Rebuild native deps | `pnpm run rebuild` | `apps/emdash-desktop/` |
 | Lint-infra allowlists | `pnpm run prune:boundary-allowlists` | root |
 | Task graph | `pnpm run graph` | root |
@@ -138,6 +139,16 @@ running (doctor reports it). See
 
 - Local packaging without signing identities still produces installable
   artifacts; mac builds are unsigned/un-notarized and Gatekeeper will warn.
+- The packaged language-server check requires built workspace dependencies and
+  lets electron-builder download/cache the pinned Electron binary. It builds small
+  stable/canary apps using the production
+  packaging rules, then checks hover, definitions and diagnostics without global tools.
+  Release builds run the same verifier against the full finished app when its architecture
+  matches the build host. Failures report the probe phase, underlying error, and recent
+  diagnostic URIs and codes.
+  It can also verify an existing app via
+  `node --experimental-strip-types scripts/release/verify-language-servers.ts --executable
+  <binary> --resources <resources-directory>` from the app directory.
 - Linux packaging keeps `extraMetadata.desktopName` aligned with the installed
   `.desktop` filename via `linux.syncDesktopName`. The desktop IDs are `Emdash`
   (stable) and `emdash-canary` (canary); preserve them across upgrades for dock pins.
@@ -165,6 +176,8 @@ doctor lists any that are active.
 | Variable | Effect |
 | --- | --- |
 | `EMDASH_DB_FILE` | Point the app (and `db:reset`) at an isolated database file |
+| `EMDASH_USER_DATA_DIR` | Use an isolated profile directory (database, secrets, logs) |
+| `EMDASH_AUTH_SERVER_URL` | Development builds only: use another Emdash auth server, e.g. a local one; pair it with `EMDASH_USER_DATA_DIR` so its session stays separate |
 | `EMDASH_SKIP_ELECTRON_REBUILD=1` | Skip the Electron-ABI rebuild in postinstall (CI sets this implicitly via `--ignore-scripts`) |
 | `EMDASH_DISABLE_NATIVE_DB=1` | Run without the native better-sqlite3 (also skips its rebuild) |
 | `EMDASH_DISABLE_PTY=1` | Run without PTY support |

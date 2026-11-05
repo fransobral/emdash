@@ -27,6 +27,13 @@ import {
   type HostSettingsContract,
 } from '@emdash/core/runtimes/host-settings/api';
 import { hostSettingsWorkerSpec } from '@emdash/core/runtimes/host-settings/node';
+import { lspContract, type LspContract } from '@emdash/core/runtimes/lsp/api';
+import { lspWorkerSpec } from '@emdash/core/runtimes/lsp/node';
+import {
+  providerUsageContract,
+  type ProviderUsageContract,
+} from '@emdash/core/runtimes/provider-usage/api';
+import { providerUsageWorkerSpec } from '@emdash/core/runtimes/provider-usage/node';
 import {
   resourceUsageContract,
   type ResourceUsageContract,
@@ -67,14 +74,19 @@ import { app } from 'electron';
 import { createAutomationCreationAdmissionController } from '@core/features/automations/node/creation-admission';
 import { automationRuntimePaths } from '@core/features/automations/node/runtime-paths';
 import { createGitHubCredentialReader } from '@core/features/github/api/node/services/github-credentials';
+import { createGitCredentialChannelsController } from '@core/features/github/node/services/git-credential-channels-controller';
+import { createIntegrationCredentialReader } from '@core/features/integrations/api/node/integration-credential-reader';
 import { getIntegrationAccountStore } from '@core/features/integrations/node/integration-account-store-instance';
 import { mementoSweepPolicies } from '@core/manifests/shared/memento-catalog';
 import { mementosWireContract, type MementosWireContract } from '@core/primitives/mementos/api';
 import { mementosComponent } from '@core/services/mementos/node';
 import { pullRequestsContract, type PullRequestsContract } from '@core/services/pull-requests/api';
 import { pullRequestsComponent } from '@core/services/pull-requests/node';
-import { createPullRequestsGitHubAuthController } from '@core/services/pull-requests/node/pull-requests-auth';
-import { resolvePullRequestSyncIdentity } from '@core/services/pull-requests/node/sync-identity';
+import { createPullRequestsAuthController } from '@core/services/pull-requests/node/pull-requests-auth';
+import {
+  resolvePullRequestIntegration,
+  resolvePullRequestSyncIdentity,
+} from '@core/services/pull-requests/node/sync-identity';
 import { resolveFileSearchDatabasePath } from '@main/core/file-search/database-path';
 import { providerAccountRegistry } from '@main/core/provider-accounts/provider-account-registry-instance';
 import { sessionIntentFilePaths } from '@main/core/runtime/session-intent-stores';
@@ -106,11 +118,13 @@ export type WorkspaceRegistryRuntimeClient = ContractClient<WorkspaceRegistryCon
 
 export type DesktopRuntimeClients = {
   readonly acp: AcpRuntimeClient;
+  readonly providerUsage: ContractClient<ProviderUsageContract>;
   readonly agentConfig: AgentConfigRuntimeClient;
   readonly automations: AutomationsRuntimeClient;
   readonly conversations: ConversationsRuntimeClient;
   readonly fileSearch: FileSearchRuntimeClient;
   readonly files: FilesRuntimeClient;
+  readonly lsp: ContractClient<LspContract>;
   readonly git: GitRuntimeClient;
   readonly hostDependencies: HostDependenciesClient;
   readonly hostSettings: HostSettingsRuntimeClient;
@@ -142,7 +156,7 @@ export type DesktopRuntimeWorkers = {
 export type DesktopWorkersHandle = {
   readonly clients: DesktopRuntimeClients;
   readonly workers: DesktopRuntimeWorkers;
-  /** Resolves after every local Host runtime has completed its Wire worker handshake. */
+  /** Resolves after required local Host runtimes have completed their Wire worker handshakes. */
   runtimeReady(): Promise<void>;
   /**
    * Activate per-worker vitals self-sampling (telemetry-sampled sessions
@@ -203,6 +217,7 @@ function startDesktopWorkersWithHost(
 ): Omit<DesktopWorkersHandle, 'startVitalsSampling' | 'setSpawnLogging'> {
   const workersStartedAt = Date.now();
   const userShellEnv = createUserShellEnvController(() => userShellEnvManager.current());
+  const gitCredentialChannels = createGitCredentialChannelsController();
   // Logs readiness timing and observes rejection so a background readiness
   // failure never surfaces as an unhandled rejection: the failure reaches
   // callers through the queued clients' per-call rejections.
@@ -276,6 +291,17 @@ function startDesktopWorkersWithHost(
       },
     })
   );
+  const providerUsageWorker = host.create(
+    ...providerUsageWorkerSpec({
+      pluginRegistry,
+      executable: desktopWorkerPath('provider-usage'),
+      env: process.env,
+      dependencies: {
+        hostDependencies: hostDependencies.client.resolver,
+        userEnv: userShellEnv,
+      },
+    })
+  );
   const mementosWorker = host.create(mementosComponent, {
     name: 'mementos',
     executable: desktopWorkerPath('mementos'),
@@ -293,16 +319,20 @@ function startDesktopWorkersWithHost(
     dependencies: {
       // Identity is resolved per request through the seam bound during services
       // boot (spec: github-git-settings §8); until then requests fail closed.
-      githubAuth: createPullRequestsGitHubAuthController(
-        createGitHubCredentialReader(
-          {
-            getAccount: (providerId, accountId) =>
+      githubAuth: createPullRequestsAuthController({
+        resolveIntegration: resolvePullRequestIntegration,
+        resolveSyncIdentity: resolvePullRequestSyncIdentity,
+        readCredentials: (() => {
+          const accounts = {
+            getAccount: (providerId: string, accountId?: string) =>
               getIntegrationAccountStore().getAccount(providerId, accountId),
-          },
-          providerAccountRegistry
-        ),
-        resolvePullRequestSyncIdentity
-      ),
+          };
+          const readGitHub = createGitHubCredentialReader(accounts, providerAccountRegistry);
+          return createIntegrationCredentialReader(accounts, providerAccountRegistry, {
+            github: async (_integrationId, accountId, host) => await readGitHub(accountId, host),
+          });
+        })(),
+      }),
     },
     config: {
       databasePath: join(app.getPath('userData'), 'pull-requests.db'),
@@ -314,9 +344,17 @@ function startDesktopWorkersWithHost(
       executable: desktopWorkerPath('terminals'),
       env: process.env,
       userEnv: userShellEnv,
+      gitCredentialChannels,
       lifecycle: {
         terminal: { kind: 'always' },
       },
+    })
+  );
+  const lspWorker = host.create(
+    ...lspWorkerSpec({
+      executable: desktopWorkerPath('lsp'),
+      env: process.env,
+      dependencies: { userEnv: userShellEnv, hostDependencies: hostDependencies.client.resolver },
     })
   );
   const resourceUsageWorker = host.create(
@@ -414,6 +452,7 @@ function startDesktopWorkersWithHost(
             hostDependencies: hostDependencies.client.resolver,
             conversations,
             userEnv: userShellEnv,
+            gitCredentialChannels,
           },
           intentsFilePath: sessionIntentFilePaths().tuiAgents,
         })
@@ -470,7 +509,7 @@ function startDesktopWorkersWithHost(
               // Creation admission is a desktop-mirror data check (ADR 0006): tombstones
               // live in the app db, so the main process answers for the worker.
               creationAdmission: createAutomationCreationAdmissionController(getAppDb),
-              acpLauncher: acp,
+              acpSessions: acp,
               tuiSessions: tuiAgents.client,
               conversationIndex: conversationsClient,
             },
@@ -503,8 +542,16 @@ function startDesktopWorkersWithHost(
   let disposePromise: Promise<void> | undefined;
   return {
     clients: {
+      lsp: queuedClient(lspContract, () => timedReady('lsp', lspWorker.ready()), {
+        retryReadinessOnFailure: true,
+      }),
       acp: queuedClient(acpApiContract, () => acpReady),
       agentConfig: queuedClient(agentConfigContract, () => agentConfigReady),
+      providerUsage: queuedClient(
+        providerUsageContract,
+        () => timedReady('provider-usage', providerUsageWorker.ready()),
+        { retryReadinessOnFailure: true }
+      ),
       automations: queuedClient(automationsContract, () =>
         automationsReady.then((result) => result.client)
       ),

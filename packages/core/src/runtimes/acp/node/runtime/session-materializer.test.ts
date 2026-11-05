@@ -5,7 +5,7 @@ import { makeAcpHarness, makeStartInput } from '#runtimes/acp/node/acp-test-supp
 import type { AcpConnectionEntry, AcpConnectionSource } from '#runtimes/acp/node/connection/source';
 import { CodexFallbackState } from './codex-fallback-state';
 import type { ConversationHandle } from './conversation-handle';
-import type { ConfigOverrides, SessionRecord } from './conversation-types';
+import type { SessionRecord } from './conversation-types';
 import {
   hasExplicitCodexHomeEnv,
   SessionMaterializer,
@@ -44,7 +44,7 @@ describe('SessionMaterializer', () => {
     expect(result).toMatchObject({ success: false, error: { type: 'invalid_state' } });
     expect(h.agent.newSession).not.toHaveBeenCalled();
     expect(setup.entry.descriptor.sessionId).toBe('retained-session');
-    expect(setup.entry.configOverrides).toEqual({ effort: 'high', collaborationMode: 'plan' });
+    expect(setup.entry.descriptor.options).toEqual({ effort: 'high', collaborationMode: 'plan' });
     expect(setup.discarded).toHaveLength(1);
     expect(setup.loading).toEqual([]);
     await setup.scope.dispose();
@@ -187,7 +187,6 @@ describe('SessionMaterializer', () => {
     const secondEntry = {
       conversationId: secondInput.conversationId,
       descriptor: secondInput,
-      configOverrides: {},
     } as ConversationHandle;
 
     const first = setup.materializer.materialize(
@@ -233,7 +232,6 @@ describe('SessionMaterializer', () => {
     const secondEntry = {
       conversationId: secondInput.conversationId,
       descriptor: secondInput,
-      configOverrides: {},
     } as ConversationHandle;
 
     const first = setup.materializer.materialize(
@@ -261,19 +259,19 @@ describe('SessionMaterializer', () => {
 
 function materializerHarness(
   harness: ReturnType<typeof makeAcpHarness>,
-  configOverrides: ConfigOverrides = {},
+  options: Record<string, string | boolean> = {},
   inputOverrides: Parameters<typeof makeStartInput>[0] = {},
   codexFallback: CodexFallbackState = new CodexFallbackState(undefined)
 ) {
   const input = makeStartInput({
     conversationId: 'conv-materializer',
     sessionId: 'retained-session',
+    options,
     ...inputOverrides,
   });
   const entry = {
     conversationId: input.conversationId,
     descriptor: input,
-    configOverrides,
   } as ConversationHandle;
   const connection: AcpConnectionEntry = {
     key: 'claude:/tmp/workspace',
@@ -308,7 +306,7 @@ function materializerHarness(
     onRecordCreated: (record, recordScope) => ownRecord(record, recordScope),
     onRecordChanged: () => {},
     onRecordClosed: () => {},
-    discardRecord: (record) => {
+    discardRecord: async (record) => {
       discarded.push(record);
       record.cell.dispose();
     },

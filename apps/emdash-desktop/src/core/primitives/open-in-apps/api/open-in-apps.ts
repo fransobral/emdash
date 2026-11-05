@@ -8,8 +8,8 @@ export type PlatformConfig = {
   checkCommands?: string[];
   bundleIds?: string[];
   appNames?: string[];
-  // Free-form mdfind query (darwin only). App is considered installed if the
-  // query returns any results. Use when bundleIds/appNames can't distinguish
+  // Free-form mdfind query (darwin only), shared by detection and launch before
+  // trying openCommands. Use when bundleIds/appNames can't distinguish
   // the app (e.g., stable and Canary share a bundle ID but differ in display name).
   mdfindQuery?: string;
   // Windows only: detect and launch via `vswhere.exe` (the canonical Visual Studio
@@ -26,7 +26,6 @@ type OpenInAppConfigShape = {
   iconPath: (typeof ICON_PATHS)[keyof typeof ICON_PATHS];
   invertInDark?: boolean;
   alwaysAvailable?: boolean;
-  hideIfUnavailable?: boolean;
   autoInstall?: boolean;
   supportsRemote?: boolean;
   platforms: Partial<Record<PlatformKey, PlatformConfig>>;
@@ -122,7 +121,7 @@ const _OPEN_IN_APPS = {
           'open -n -a "Visual Studio Code" {{path}}',
         ],
         checkCommands: ['code'],
-        bundleIds: ['com.microsoft.VSCode', 'com.microsoft.VSCodeInsiders'],
+        bundleIds: ['com.microsoft.VSCode'],
         appNames: ['Visual Studio Code'],
       },
       win32: {
@@ -220,7 +219,11 @@ const _OPEN_IN_APPS = {
         checkCommands: ['wt', 'cmd'],
       },
       linux: {
+        // Prefer the user's default terminal (XDG default-terminal launcher, then $TERMINAL,
+        // which opens in the exec cwd) before the distro-specific fallbacks.
         openCommands: [
+          'xdg-terminal-exec --dir={{path}}',
+          '([ -n "$TERMINAL" ] && "$TERMINAL")',
           'x-terminal-emulator --working-directory={{path}}',
           'gnome-terminal --working-directory={{path}}',
           'konsole --workdir {{path}}',
@@ -288,8 +291,6 @@ const _OPEN_IN_APPS = {
     platforms: {
       darwin: {
         openCommands: ['open -na "Hyper"'],
-        checkCommands: ['hyper'],
-        bundleIds: ['co.zeit.hyper'],
         appNames: ['Hyper'],
       },
       win32: {
@@ -456,7 +457,6 @@ const _OPEN_IN_APPS = {
           'open -a "Kiro" {{path}}',
         ],
         checkCommands: ['kiro'],
-        bundleIds: ['dev.kiro.desktop'],
         appNames: ['Kiro'],
       },
       win32: {
@@ -545,11 +545,9 @@ const _OPEN_IN_APPS = {
     id: 'intellij-idea',
     label: 'IntelliJ IDEA',
     iconPath: ICON_PATHS['intellij-idea'],
-    hideIfUnavailable: true,
     platforms: {
       darwin: {
         openCommands: ['open -a "IntelliJ IDEA" {{path}}'],
-        bundleIds: ['com.jetbrains.intellij'],
         appNames: ['IntelliJ IDEA'],
       },
       win32: {
@@ -566,11 +564,9 @@ const _OPEN_IN_APPS = {
     id: 'rider',
     label: 'Rider',
     iconPath: ICON_PATHS.rider,
-    hideIfUnavailable: true,
     platforms: {
       darwin: {
         openCommands: ['open -a "Rider" {{path}}', 'open -a "JetBrains Rider" {{path}}'],
-        bundleIds: ['com.jetbrains.rider'],
         appNames: ['Rider', 'JetBrains Rider'],
       },
       win32: {
@@ -587,11 +583,9 @@ const _OPEN_IN_APPS = {
     id: 'android-studio',
     label: 'Android Studio',
     iconPath: ICON_PATHS['android-studio'],
-    hideIfUnavailable: true,
     platforms: {
       darwin: {
         openCommands: ['open -a "Android Studio" {{path}}'],
-        bundleIds: ['com.google.android.studio'],
         appNames: ['Android Studio'],
       },
       win32: {
@@ -608,7 +602,6 @@ const _OPEN_IN_APPS = {
     id: 'android-studio-canary',
     label: 'Android Studio Canary',
     iconPath: ICON_PATHS['android-studio-canary'],
-    hideIfUnavailable: true,
     platforms: {
       darwin: {
         // Canary shares bundle ID com.google.android.studio with stable, so we
@@ -616,10 +609,7 @@ const _OPEN_IN_APPS = {
         // 3 Feature Drop 2025.2.3 Canary 3.app" or "Android Studio Canary X.Y").
         mdfindQuery:
           'kMDItemCFBundleIdentifier == "com.google.android.studio" && kMDItemDisplayName == "*Canary*"cd',
-        openCommands: [
-          'CANARY=$(mdfind \'kMDItemCFBundleIdentifier == "com.google.android.studio" && kMDItemDisplayName == "*Canary*"cd\' | head -n 1) && [ -n "$CANARY" ] && open -a "$CANARY" {{path}}',
-          'open -a "Android Studio Preview" {{path}}',
-        ],
+        openCommands: ['open -a "Android Studio Preview" {{path}}'],
         appNames: ['Android Studio Preview'],
       },
       win32: {
@@ -636,11 +626,9 @@ const _OPEN_IN_APPS = {
     id: 'phpstorm',
     label: 'PhpStorm',
     iconPath: ICON_PATHS.phpstorm,
-    hideIfUnavailable: true,
     platforms: {
       darwin: {
         openCommands: ['open -a "PhpStorm" {{path}}'],
-        bundleIds: ['com.jetbrains.PhpStorm'],
         appNames: ['PhpStorm'],
       },
       win32: {
@@ -657,11 +645,9 @@ const _OPEN_IN_APPS = {
     id: 'webstorm',
     label: 'WebStorm',
     iconPath: ICON_PATHS.webstorm,
-    hideIfUnavailable: true,
     platforms: {
       darwin: {
         openCommands: ['open -a "WebStorm" {{path}}'],
-        bundleIds: ['com.jetbrains.WebStorm'],
         appNames: ['WebStorm'],
       },
       win32: {
@@ -678,11 +664,9 @@ const _OPEN_IN_APPS = {
     id: 'pycharm',
     label: 'PyCharm',
     iconPath: ICON_PATHS.pycharm,
-    hideIfUnavailable: true,
     platforms: {
       darwin: {
         openCommands: ['open -a "PyCharm" {{path}}'],
-        bundleIds: ['com.jetbrains.pycharm'],
         appNames: ['PyCharm'],
       },
       win32: {
@@ -699,11 +683,9 @@ const _OPEN_IN_APPS = {
     id: 'rubymine',
     label: 'RubyMine',
     iconPath: ICON_PATHS.rubymine,
-    hideIfUnavailable: true,
     platforms: {
       darwin: {
         openCommands: ['open -a "RubyMine" {{path}}'],
-        bundleIds: ['com.jetbrains.rubymine'],
         appNames: ['RubyMine'],
       },
       win32: {
@@ -720,11 +702,9 @@ const _OPEN_IN_APPS = {
     id: 'rustrover',
     label: 'RustRover',
     iconPath: ICON_PATHS.rustrover,
-    hideIfUnavailable: true,
     platforms: {
       darwin: {
         openCommands: ['open -a "RustRover" {{path}}'],
-        bundleIds: ['com.jetbrains.rustrover'],
         appNames: ['RustRover'],
       },
       win32: {
@@ -741,7 +721,6 @@ const _OPEN_IN_APPS = {
     id: 'visual-studio',
     label: 'Visual Studio',
     iconPath: ICON_PATHS['visual-studio'],
-    hideIfUnavailable: true,
     platforms: {
       // Windows-only IDE. Detected and launched via vswhere (see winVswhere);
       // the `devenv {{path}}` fallback covers setups where devenv.exe is on PATH.

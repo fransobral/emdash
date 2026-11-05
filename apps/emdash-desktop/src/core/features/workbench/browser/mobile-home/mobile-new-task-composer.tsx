@@ -4,21 +4,20 @@ import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
 import { hostRefFromConnectionId } from '@core/features/agents/api/browser/client';
 import { useAgents } from '@core/features/agents/api/browser/use-agents';
-import { useNewChatModelOptions } from '@core/features/conversations/api/browser/discovered-models';
+import { formatHostRef } from '@emdash/core/primitives/host/api';
+import { patchProviderSettings } from '@core/features/conversations/api/browser/provider-preferences';
+import { useConversationLaunchSettings } from '@core/features/conversations/api/browser/use-conversation-launch-settings';
 import { useEffectiveProvider } from '@core/features/conversations/api/browser/use-effective-provider';
 import {
   asAvailableProject,
   getProjectManagerStore,
   getProjectSshConnectionId,
 } from '@core/features/projects/api/browser/stores/project-selectors';
-import { useTaskSettings } from '@core/features/tasks/api/browser/hooks/useTaskSettings';
 import {
-  AUTO_APPROVE_PREFERENCE_KEY,
-  CHAT_UI_PREFERENCE_KEY,
-} from '@core/features/tasks/contributions/browser/task-config/initial-conversation-section';
+  providerComposerOptions,
+  selectCachedProviderOptions,
+} from '@core/features/conversations/contributions/browser/provider-composer-options';
 import { useOpenModal } from '@core/manifests/browser/modal-api';
-import { agentSupportsAcp, agentSupportsAutoApprove } from '@core/primitives/agents/api';
-import { useLocalStorage } from '@core/primitives/react-hooks/browser/useLocalStorage';
 import { agentLabel } from './mobile-home-model';
 
 const CHIP_CLASS =
@@ -51,25 +50,46 @@ export const MobileNewTaskComposer = observer(function MobileNewTaskComposer() {
   const { data: agents } = useAgents(hostRefFromConnectionId(connectionId));
   const capabilities = agents?.find((agent) => agent.id === providerId)?.capabilities;
 
-  // Same remembered preferences the create-task modal reads when it opens.
-  const { autoApproveByDefault } = useTaskSettings();
-  const [autoApprovePreference, setAutoApprovePreference] = useLocalStorage(
-    AUTO_APPROVE_PREFERENCE_KEY,
-    autoApproveByDefault
-  );
-  const [useChatUiPreference] = useLocalStorage(CHAT_UI_PREFERENCE_KEY, false);
-  const canAutoApprove = agentSupportsAutoApprove(capabilities);
-  const autoApprove = canAutoApprove && autoApprovePreference;
-  const transport = agentSupportsAcp(capabilities) && useChatUiPreference ? 'acp' : 'pty';
+  // Same provider settings the create-task modal reads when it opens (synced across devices).
+  const host = formatHostRef(hostRefFromConnectionId(connectionId));
+  const launchSettings = useConversationLaunchSettings(host, providerId, capabilities);
+  const { autoApprove, useChatUi } = launchSettings;
+  const canAutoApprove = launchSettings.autoApproveSupported;
 
-  const modelOptions = useNewChatModelOptions(providerId, connectionId, transport);
+  // Chat UI: the model is a provider option, saved as the agent's preference so the
+  // created chat starts with it. Terminal: the CLI's static model list, passed to the modal.
+  const acpModel = useChatUi
+    ? providerComposerOptions(
+        selectCachedProviderOptions(launchSettings.settings.catalogs, launchSettings.settings.acp.options),
+        launchSettings.settings.acp.options,
+        (configId, value) => {
+          if (providerId)
+            void patchProviderSettings({ host, providerId }, { transport: 'acp', options: { [configId]: value } });
+        }
+      )
+    : null;
+  const staticModels = capabilities?.models;
+  const modelOptions = acpModel
+    ? (acpModel.modelOptions ?? null)
+    : staticModels?.kind === 'selectable'
+      ? staticModels.modelOptions
+      : null;
   // A model chosen for another agent or project is not valid here: fall back to default.
-  const model = modelOptions && chosenModel in modelOptions ? chosenModel : DEFAULT_MODEL_VALUE;
+  const model = acpModel
+    ? (acpModel.selectedModel ?? DEFAULT_MODEL_VALUE)
+    : modelOptions && chosenModel in modelOptions
+      ? chosenModel
+      : DEFAULT_MODEL_VALUE;
   const modelName = model ? (modelOptions?.[model]?.name ?? model) : 'Modelo por defecto';
+  const selectModel = (value: string) => {
+    if (acpModel) {
+      if (value) acpModel.onModelChange?.(value);
+    } else setChosenModel(value);
+  };
 
   const canSend = Boolean(projectId) && prompt.trim().length > 0;
   const openModal = (initialPrompt: string) => {
-    void openTaskModal({ projectId, initialPrompt, initialModel: model || undefined });
+    void openTaskModal({ projectId, initialPrompt, initialModel: (!acpModel && model) || undefined });
     setPrompt('');
   };
 
@@ -127,7 +147,7 @@ export const MobileNewTaskComposer = observer(function MobileNewTaskComposer() {
           <span className="truncate">{agentLabel(providerId) ?? 'Agente'}</span>
         </button>
         {modelOptions && Object.keys(modelOptions).length > 0 ? (
-          <Select.Root value={model} onValueChange={(value) => setChosenModel(value as string)}>
+          <Select.Root value={model} onValueChange={(value) => selectModel(value as string)}>
             <Select.Trigger
               aria-label="Modelo"
               showChevron={false}
@@ -137,7 +157,9 @@ export const MobileNewTaskComposer = observer(function MobileNewTaskComposer() {
               <span className="truncate">{modelName}</span>
             </Select.Trigger>
             <Select.Content width="content-at-least-trigger" align="start">
-              <Select.Item value={DEFAULT_MODEL_VALUE}>Modelo por defecto</Select.Item>
+              {acpModel ? null : (
+                <Select.Item value={DEFAULT_MODEL_VALUE}>Modelo por defecto</Select.Item>
+              )}
               {Object.entries(modelOptions).map(([id, option]) => (
                 <Select.Item key={id} value={id}>
                   {option.name}
@@ -152,7 +174,7 @@ export const MobileNewTaskComposer = observer(function MobileNewTaskComposer() {
             aria-pressed={autoApprove}
             aria-label="Auto-aprobar permisos"
             className={`${CHIP_CLASS} ${autoApprove ? 'border-accent text-foreground' : ''}`}
-            onClick={() => setAutoApprovePreference(!autoApprove)}
+            onClick={() => launchSettings.setAutoApprove(!autoApprove)}
           >
             {autoApprove ? (
               <ShieldCheck aria-hidden="true" className="size-3.5 shrink-0" />

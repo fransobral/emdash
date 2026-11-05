@@ -7,7 +7,7 @@ describe('ACP session reset', () => {
     const h = makeAcpHarness();
     const rt = new AcpRuntime(h.deps);
     const input = makeStartInput({ conversationId: 'conv-reset' });
-    await rt.launchSession(input);
+    await rt.startSession(input, 'resume');
     h.agent.newSession.mockResolvedValueOnce({ sessionId: 'session-2' });
     h.agent.prompt.mockClear();
 
@@ -29,7 +29,7 @@ describe('ACP session reset', () => {
     const h = makeAcpHarness();
     const rt = new AcpRuntime(h.deps);
     const input = makeStartInput({ conversationId: 'conv-stale' });
-    await rt.launchSession(input);
+    await rt.startSession(input, 'resume');
     h.agent.newSession.mockResolvedValueOnce({ sessionId: 'session-2' });
     await rt.resetSession('conv-stale');
 

@@ -1,13 +1,15 @@
 import type { ChatContext, ChatImageAttachment, ChatState, ChatView } from '@emdash/chat-ui';
-import { formatHostRef } from '@emdash/core/primitives/host/api';
-import type {
-  AcpPermissionRequest,
-  AgentState,
-  PromptAttachment,
-  PromptInput,
-  QueuedPrompt,
-  SessionMcpServer,
-  TranscriptTurn,
+import {
+  sessionNotFoundErrorSchema,
+  type AcpPermissionRequest,
+  type AcpSessionStartMode,
+  type AgentState,
+  type PromptAttachment,
+  type PromptInput,
+  type ProviderConfigOption,
+  type QueuedPrompt,
+  type SessionMcpServer,
+  type TranscriptTurn,
 } from '@emdash/core/runtimes/acp/api/client';
 import type { AttachmentMimeType, AttachmentRef } from '@emdash/core/services/attachments/api';
 import { createScope, type Scope } from '@emdash/shared/concurrency';
@@ -15,10 +17,6 @@ import { systemClock } from '@emdash/shared/scheduling';
 import {
   PromptEditorModel,
   type CommandItem,
-  type ComposerCollaborationModeOption,
-  type ComposerEffortOption,
-  type ComposerModelOption,
-  type ComposerPermissionModeOption,
   type ComposerQueuedPrompt,
 } from '@emdash/ui/react/components';
 import { toast } from '@emdash/ui/react/primitives';
@@ -43,9 +41,7 @@ import {
   getConversationsClient,
   type ConversationsClient,
 } from '@core/features/conversations/api/browser/client';
-import { rememberDiscoveredModels } from '@core/features/conversations/api/browser/discovered-models';
 import { conversationRegistry } from '@core/features/conversations/api/browser/stores/conversation-registry';
-import { updateProviderPreference } from '@core/features/conversations/browser/provider-preferences';
 import {
   ACP_DRAFT_MAX_LENGTH,
   acpDraftMemento,
@@ -108,6 +104,7 @@ type PermissionQueueItem = {
 
 export type AcpLoadError =
   | { kind: 'auth_required'; message: string }
+  | { kind: 'session_not_found'; message: string }
   | { kind: 'unavailable'; message: string }
   | { kind: 'history_unavailable'; message: string }
   | { kind: 'generic'; message: string };
@@ -138,11 +135,14 @@ export class AcpChatStore {
   private _bootstrapped = false;
   private _unsubs: Array<() => void> = [];
   private readonly _scope: Scope;
+  private readonly _lastProviderOptions = observable.box<ProviderConfigOption[] | undefined>(
+    undefined,
+    { deep: false }
+  );
   private readonly _draftSpace: SubjectSpace<'conversation'>;
   private readonly _draftHandle: MementoHandle<AcpDraftState>;
   private readonly _disposeComposerSubscription: () => void;
   private readonly _disposeHostReaction: () => void;
-  private readonly _disposeModelCatalogReaction: () => void;
   private readonly _disposeVisibilityListener: () => void;
   private _attachmentsClientPromise: Promise<ConversationsClient['attachments']> | null = null;
   private _submissionSequence = 0;
@@ -184,14 +184,6 @@ export class AcpChatStore {
       draftText: computed,
       draftAttachments: observable.shallow,
       unconfirmedPromptIds: observable.shallow,
-      model: computed,
-      modelOptions: computed,
-      permissionMode: computed,
-      permissionModeOptions: computed,
-      collaborationMode: computed,
-      collaborationModeOptions: computed,
-      effort: computed,
-      effortOptions: computed,
       commands: computed,
       mcpServers: computed,
       permissionQueue: computed,
@@ -201,10 +193,9 @@ export class AcpChatStore {
       isEmpty: computed,
       submitPrompt: action,
       stop: action,
-      setModel: action,
-      setMode: action,
-      setCollaborationMode: action,
-      setEffort: action,
+      providerOptions: computed,
+      configuredOptions: computed,
+      setOption: action,
       resolvePermission: action,
       editQueuedPrompt: action,
       deleteQueuedPrompt: action,
@@ -216,6 +207,14 @@ export class AcpChatStore {
       exportTranscript: action,
       retry: action,
     });
+    this._scope.add(
+      reaction(
+        () => this.session?.config.current().options,
+        (options) => {
+          if (options !== undefined) this._lastProviderOptions.set(options);
+        }
+      )
+    );
     this._disposeComposerSubscription = this.composerModel.subscribe(() => {
       runInAction(() => this._draftText.set(this.composerModel.getText()));
     });
@@ -250,13 +249,6 @@ export class AcpChatStore {
       }
     );
     this._disposeVisibilityListener = this._refreshHistoryWhenVisible();
-    this._disposeModelCatalogReaction = reaction(
-      () => this.session?.config.current().modelOptions?.available ?? null,
-      (available) => {
-        if (available && available.length > 0) void this._rememberModelCatalog(available);
-      },
-      { equals: comparer.structural, fireImmediately: true }
-    );
     this._draftHandle.autoPersist(
       () => ({
         version: '1' as const,
@@ -285,66 +277,6 @@ export class AcpChatStore {
     );
   }
 
-  get model(): string | null {
-    return this.session?.config.current().modelOptions?.selected ?? null;
-  }
-
-  get modelOptions(): Record<string, ComposerModelOption> | null {
-    const options = this.session?.config.current().modelOptions;
-    if (!options) return null;
-    return Object.fromEntries(
-      options.available.map((option) => [
-        option.id,
-        { name: option.name, description: option.description },
-      ])
-    );
-  }
-
-  get permissionMode(): string | null {
-    return this.session?.config.current().modeOptions?.selected ?? null;
-  }
-
-  get permissionModeOptions(): Record<string, ComposerPermissionModeOption> | null {
-    const options = this.session?.config.current().modeOptions;
-    if (!options) return null;
-    return Object.fromEntries(
-      options.available.map((option) => [
-        option.id,
-        { name: option.name, description: option.description },
-      ])
-    );
-  }
-
-  get collaborationMode(): string | null {
-    return this.session?.config.current().collaborationModeOptions?.selected ?? null;
-  }
-
-  get collaborationModeOptions(): Record<string, ComposerCollaborationModeOption> | null {
-    const options = this.session?.config.current().collaborationModeOptions;
-    if (!options) return null;
-    return Object.fromEntries(
-      options.available.map((option) => [
-        option.id,
-        { name: option.name, description: option.description },
-      ])
-    );
-  }
-
-  get effort(): string | null {
-    return this.session?.config.current().efforts?.selected ?? null;
-  }
-
-  get effortOptions(): Record<string, ComposerEffortOption> | null {
-    const options = this.session?.config.current().efforts;
-    if (!options) return null;
-    return Object.fromEntries(
-      options.available.map((option) => [
-        option.id,
-        { name: option.name, description: option.description },
-      ])
-    );
-  }
-
   get commands(): CommandItem[] {
     return (this.session?.config.current().availableCommands ?? []).map((command) => ({
       id: command.name,
@@ -364,11 +296,11 @@ export class AcpChatStore {
 
   /**
    * The live active turn, or null when idle. Read-only mirror of
-   * `session.activeTurn` for consumers (the agent detail sheet) that need the
+   * `sessionState.transcript.activeTurn` for consumers (the agent detail sheet) that need the
    * current turn's tool-call tree rather than just the flattened agent list.
    */
   get activeAgentTurn(): TranscriptTurn | null {
-    return this.session?.activeTurn.current() ?? null;
+    return this.session?.sessionState.current().transcript?.activeTurn ?? null;
   }
 
   get permissionQueue(): PermissionQueueItem[] {
@@ -408,7 +340,10 @@ export class AcpChatStore {
       isBusy: state?.isGenerating ?? false,
       isResuming,
       hasPendingPermission: (state?.pendingPermissions.length ?? 0) > 0,
-      canSubmit: liveActionsEnabled && (state?.canSubmit ?? false),
+      canSubmit:
+        liveActionsEnabled &&
+        this.loadError?.kind !== 'session_not_found' &&
+        (state?.canSubmit ?? false),
       canCancel: liveActionsEnabled && (state?.canCancel ?? false),
     };
   }
@@ -427,12 +362,18 @@ export class AcpChatStore {
     void this._runBootstrap();
   }
 
-  retry(): void {
+  retry(options: { mode?: AcpSessionStartMode } = {}): void {
+    if (this._disposed) return;
+    if (
+      options.mode === 'fresh' &&
+      (this.historyLoading || this.loadError?.kind !== 'session_not_found')
+    )
+      return;
     if (this.hostAccess?.liveAction.kind === 'disabled') {
       void this.hostAccess.recover();
       return;
     }
-    if (this.session && !this._bootstrapFailed) {
+    if (options.mode !== 'fresh' && this.session && !this._bootstrapFailed) {
       const state = this.hostAccess?.state;
       this._recoverAttachment(
         this.session,
@@ -441,11 +382,12 @@ export class AcpChatStore {
       return;
     }
     if (this.historyLoading || !this.loadError) return;
+    this._historyRefreshRequested = false;
     void this._attachmentRecovery?.dispose();
     this._attachmentRecovery = null;
     this.historyLoading = true;
     this.loadError = null;
-    void this._runBootstrap();
+    void this._runBootstrap(options.mode);
   }
 
   bindView(view: ChatView | null): void {
@@ -513,9 +455,14 @@ export class AcpChatStore {
   submitPrompt(
     text: string,
     attachments: AcpPromptAttachment[] = [],
-    hiddenContext?: string | Promise<string | undefined>
+    hiddenContext?: string | Promise<string | undefined>,
+    onAccepted?: () => void
   ): void {
-    if (this.hostAccess?.liveAction.kind === 'disabled') return;
+    if (
+      this.hostAccess?.liveAction.kind === 'disabled' ||
+      this.loadError?.kind === 'session_not_found'
+    )
+      return;
     const promptAttachments = attachments.map((attachment) => attachment.ref);
     const submissionSequence = ++this._submissionSequence;
     const promptId = crypto.randomUUID();
@@ -547,6 +494,7 @@ export class AcpChatStore {
     };
 
     void this._submitPrompt(promptId, text, promptAttachments, hiddenContext).then((outcome) => {
+      if (outcome === 'accepted') onAccepted?.();
       if (outcome === 'rejected') {
         runInAction(() => {
           if (submissionSequence === this._submissionSequence) restoreDraft();
@@ -612,7 +560,7 @@ export class AcpChatStore {
 
   /**
    * Clears the agent's context by restarting it on a fresh session in this conversation.
-   * Agent, account, model, mode and effort are kept; the transcript starts empty once the
+   * Agent, account and provider options are kept; the transcript starts empty once the
    * new session's history page replaces the old one.
    */
   restartSession(): void {
@@ -629,60 +577,50 @@ export class AcpChatStore {
       .catch((error: unknown) => this._toastError('Failed to restart session', error));
   }
 
-  setModel(model: string): void {
-    if (!this.liveActionsEnabled) return;
-    void this.session
-      ?.setOption('model', model)
-      .then((result) => {
-        if (!result.success) {
-          this._toastError('Failed to change model', result.error);
-          return;
-        }
-        void this._rememberPreference({ model });
-      })
-      .catch((error: unknown) => this._toastError('Failed to change model', error));
+  get providerOptions() {
+    return this.session?.config.current().options ?? this._lastProviderOptions.get();
+  }
+  get configuredOptions() {
+    const conversation = conversationRegistry
+      .get(this.taskId)
+      ?.conversations.get(this.conversationId)?.data;
+    return this.session?.config.current().configuredOptions ?? conversation?.options ?? {};
   }
 
-  setMode(modeId: string): void {
-    if (!this.liveActionsEnabled) return;
-    void this.session
-      ?.setOption('mode', modeId)
-      .then((result) => {
-        if (!result.success) {
-          this._toastError('Failed to change session mode', result.error);
-          return;
-        }
-        void this._rememberPreference({ modeId });
-      })
-      .catch((error: unknown) => this._toastError('Failed to change session mode', error));
+  get canSetOptions() {
+    return this.liveActionsEnabled && this.session?.config.current().options !== undefined;
   }
 
-  setCollaborationMode(modeId: string): void {
-    if (!this.liveActionsEnabled) return;
+  setOption(configId: string, value: string | boolean): void {
+    if (!this.canSetOptions || !configId) return;
     void this.session
-      ?.setOption('collaborationMode', modeId)
+      ?.setOption(configId, value)
       .then((result) => {
         if (!result.success) {
-          this._toastError('Failed to change collaboration mode', result.error);
+          this._toastError('Failed to change setting', result.error);
           return;
         }
-        void this._rememberPreference({ collaborationMode: modeId });
-      })
-      .catch((error: unknown) => this._toastError('Failed to change collaboration mode', error));
-  }
-
-  setEffort(effort: string): void {
-    if (!this.liveActionsEnabled) return;
-    void this.session
-      ?.setOption('effort', effort)
-      .then((result) => {
-        if (!result.success) {
-          this._toastError('Failed to change effort', result.error);
-          return;
+        if (result.data.reapplyFailures.length) {
+          toast.warning('Setting saved, but some settings could not be restored', {
+            description: result.data.reapplyFailures
+              .map(({ configId, error }) => {
+                const name =
+                  this.providerOptions?.find((option) => option.id === configId)?.name ?? configId;
+                const message =
+                  error.type === 'set_config_failed' ? error.cause?.message : error.message;
+                return message ? `${name}: ${message}` : name;
+              })
+              .join('\n'),
+          });
         }
-        void this._rememberPreference({ effort });
+        if (result.data.preferenceSaveError !== undefined) {
+          toast.warning(
+            'Setting saved for this conversation, but could not be remembered for new conversations',
+            { description: result.data.preferenceSaveError }
+          );
+        }
       })
-      .catch((error: unknown) => this._toastError('Failed to change effort', error));
+      .catch((error: unknown) => this._toastError('Failed to change setting', error));
   }
 
   resolvePermission(optionId: string): void {
@@ -742,7 +680,6 @@ export class AcpChatStore {
     this._disposed = true;
     this._disposeHostReaction();
     this._disposeVisibilityListener();
-    this._disposeModelCatalogReaction();
     unregisterConversationCommands(this.conversationId);
     this._unsubs.splice(0).forEach((unsub) => unsub());
     this.session?.dispose();
@@ -755,7 +692,7 @@ export class AcpChatStore {
       .catch((error: unknown) => getMementoClient().reportError(error));
   }
 
-  private async _runBootstrap(): Promise<void> {
+  private async _runBootstrap(mode?: AcpSessionStartMode): Promise<void> {
     const epoch = ++this._historyEpoch;
     if (this._disposed) return;
     if (this.hostAccess?.liveAction.kind === 'disabled') {
@@ -785,26 +722,20 @@ export class AcpChatStore {
         this._subscribeLiveSession(attachedSession);
       });
 
+      const started = await attachedSession.startSession(mode);
+      if (this._disposed || this._historyEpoch !== epoch || this.session !== attachedSession)
+        return;
+      if (!started.success) throw new AcpStartError(started.error);
       const history = await attachedSession.loadHistory(undefined, 100);
       if (this._disposed || this._historyEpoch !== epoch || this.session !== attachedSession)
         return;
       if (!history.success) throw new AcpStartError(history.error);
-      if (history.data.unavailable && !this.historyKnown && this.messageCount === 0) {
+      if (history.data.kind === 'unavailable' && !this.historyKnown && this.messageCount === 0) {
         this._failBootstrap({
           kind: 'history_unavailable',
           message: 'Conversation history is unavailable. Retry loading this conversation.',
         });
         return;
-      }
-      if (history.data.clearedConfiguration?.length) {
-        await this._rememberPreference(
-          Object.fromEntries(history.data.clearedConfiguration.map((key) => [key, null])) as {
-            model?: null;
-            modeId?: null;
-            effort?: null;
-            collaborationMode?: null;
-          }
-        );
       }
 
       if (this._disposed || this._historyEpoch !== epoch || this.session !== attachedSession)
@@ -880,17 +811,22 @@ export class AcpChatStore {
             await session.revalidate(scope.signal);
             if (scope.signal.aborted || this.session !== session || !session.usable) return;
             this._attachedHostGeneration = generation;
-            runInAction(() => {
-              // Reattachment alone cannot recover a failed history/bootstrap load.
-              if (this._bootstrapFailed || (this._bootstrapped && this.historyLoading)) {
+            // Reattachment alone cannot recover a failed history/bootstrap load.
+            if (this._bootstrapFailed || (this._bootstrapped && this.historyLoading)) {
+              runInAction(() => {
                 this.historyLoading = true;
                 this.loadError = null;
-                void this._runBootstrap();
-              } else {
+              });
+              await this._runBootstrap();
+            } else {
+              const started = await session.startSession();
+              if (!started.success) throw new AcpStartError(started.error);
+              if (scope.signal.aborted || this.session !== session) return;
+              runInAction(() => {
                 this.loadError = null;
                 this._requestHistoryRefresh();
-              }
-            });
+              });
+            }
             return;
           } catch (error) {
             if (scope.signal.aborted || this.session !== session) return;
@@ -898,7 +834,7 @@ export class AcpChatStore {
             runInAction(() => {
               this.loadError = loadError;
             });
-            if (loadError.kind === 'auth_required') return;
+            if (error instanceof AcpStartError) return;
           }
           await systemClock.sleep(Math.min(1_000 * 2 ** attempt++, 15_000), {
             signal: scope.signal,
@@ -968,6 +904,12 @@ export class AcpChatStore {
         promptId
       );
       if (!result.success) {
+        const missingSession = sessionNotFoundErrorSchema.safeParse(result.error);
+        if (missingSession.success) {
+          runInAction(() => {
+            this.loadError = toLoadError(new AcpStartError(missingSession.data));
+          });
+        }
         this._toastError('Failed to send message', result.error);
         return 'rejected';
       }
@@ -1042,12 +984,9 @@ export class AcpChatStore {
 
   private _subscribeLiveSession(session: AcpLiveSession): void {
     this._unsubs.splice(0).forEach((unsub) => unsub());
-    let previousLifecycle = session.sessionState.current().lifecycle;
-    let previousHistoryRevision = session.sessionState.current().historyRevision;
     const disconnectChatSession = getChatUiRuntime().connectSession(
       this.chatState,
       {
-        activeTurn: asValueSource(session.activeTurn),
         plan: asValueSource(session.plan),
         sessionState: asValueSource(session.sessionState),
       },
@@ -1059,18 +998,7 @@ export class AcpChatStore {
     this._unsubs.push(
       disconnectChatSession,
       this._bindTerminalOutputs(session),
-      session.sessionState.onChange((state) => {
-        const replayCompleted = previousLifecycle === 'replaying' && state.lifecycle === 'ready';
-        const historyChanged = previousHistoryRevision !== state.historyRevision;
-        previousLifecycle = state.lifecycle;
-        previousHistoryRevision = state.historyRevision;
-        runInAction(() => {
-          this._syncMessageCount();
-        });
-        if (historyChanged || (replayCompleted && !this.historyLoading))
-          this._requestHistoryRefresh();
-      }),
-      session.activeTurn.onChange(() => runInAction(() => this._syncMessageCount()))
+      session.sessionState.onChange(() => runInAction(() => this._syncMessageCount()))
     );
   }
 
@@ -1110,37 +1038,6 @@ export class AcpChatStore {
     return this._attachmentsClientPromise;
   }
 
-  private async _rememberPreference(patch: {
-    model?: string | null;
-    modeId?: string | null;
-    effort?: string | null;
-    collaborationMode?: string | null;
-  }): Promise<void> {
-    const providerId = conversationRegistry.get(this.taskId)?.conversations.get(this.conversationId)
-      ?.data.providerId;
-    if (!providerId) return;
-    const host = formatHostRef(hostRefFromConnectionId(getProjectSshConnectionId(this.projectId)));
-    try {
-      await updateProviderPreference(host, providerId, 'acp', patch);
-    } catch (error) {
-      getMementoClient().reportError(error);
-    }
-  }
-
-  private async _rememberModelCatalog(
-    available: ReadonlyArray<{ id: string; name: string; description?: string }>
-  ): Promise<void> {
-    const providerId = conversationRegistry.get(this.taskId)?.conversations.get(this.conversationId)
-      ?.data.providerId;
-    if (!providerId) return;
-    const host = formatHostRef(hostRefFromConnectionId(getProjectSshConnectionId(this.projectId)));
-    try {
-      await rememberDiscoveredModels(host, providerId, available);
-    } catch (error) {
-      getMementoClient().reportError(error);
-    }
-  }
-
   private _bindTerminalOutputs(session: AcpLiveSession): () => void {
     return bindSessionTerminalOutputs(session, (terminalId, snapshot) =>
       this.chatState.session.setTerminalOutput(terminalId, snapshot)
@@ -1176,6 +1073,15 @@ export class AcpChatStore {
             // A newer head arrived during the read: catch up immediately. Backoff is
             // for unavailable/failed reads, not normal transcript progress.
             if (this._historyRefreshRequested) continue;
+            if (attempt >= 5) {
+              runInAction(() => {
+                this.loadError = {
+                  kind: 'history_unavailable',
+                  message: 'Could not load conversation history. Retry loading it.',
+                };
+              });
+              return;
+            }
             this._historyRefreshRequested = true;
             await systemClock.sleep(Math.min(1_000 * 2 ** attempt++, 15_000), {
               signal: this._scope.signal,
@@ -1208,17 +1114,17 @@ export class AcpChatStore {
         const history = await session.loadHistory(before, 100);
         if (this._disposed || this.session !== session || this._historyEpoch !== epoch) return true;
         if (!history.success) throw new AcpStartError(history.error);
-        if (history.data.unavailable) return !transcript.needsHistory;
+        if (history.data.kind === 'unavailable') return !transcript.needsHistory;
         const position = history.data.position;
         // A change between pages requires another pass over the loaded range, including
         // its latest page. A newer old-page response alone cannot prove we caught up.
         if (
           before !== undefined &&
-          (position?.historyRevision !== revision || position?.generation !== generation)
+          (position.historyRevision !== revision || position.generation !== generation)
         )
           return false;
-        revision = position?.historyRevision;
-        generation = position?.generation;
+        revision = position.historyRevision;
+        generation = position.generation;
         let applied = false;
         runInAction(() => {
           applied = transcript.applyPage(history.data);
@@ -1231,13 +1137,7 @@ export class AcpChatStore {
         });
         if (!applied) return false;
         const cursor = history.data.nextCursor;
-        if (
-          !position ||
-          cursor === null ||
-          oldestVisibleSeq === undefined ||
-          cursor <= oldestVisibleSeq
-        )
-          break;
+        if (cursor === null || oldestVisibleSeq === undefined || cursor <= oldestVisibleSeq) break;
         if (before !== undefined && cursor >= before) return false;
         before = cursor;
       } while (!this._disposed);
@@ -1260,6 +1160,7 @@ export class AcpChatStore {
         return true;
       }
       if (error instanceof AcpStartError) {
+        this._historyRefreshRequested = false;
         runInAction(() => {
           this.loadError = toLoadError(error);
         });
@@ -1349,6 +1250,9 @@ function toLoadError(error: unknown): AcpLoadError {
   const message = error instanceof Error ? error.message : 'Failed to load chat.';
   if (error instanceof AcpStartError && error.errorType === 'auth_required') {
     return { kind: 'auth_required', message };
+  }
+  if (error instanceof AcpStartError && error.errorType === 'session_not_found') {
+    return { kind: 'session_not_found', message };
   }
   return { kind: 'generic', message };
 }

@@ -50,6 +50,7 @@ import type { ProjectSettingsService } from '@core/features/projects/api/node/se
 import type { ProjectDeletionDependencies } from '@core/features/projects/node/operations/deleteProject';
 import { getProjectById } from '@core/features/projects/node/operations/getProjects';
 import { createProjectsWireController } from '@core/features/projects/node/wire-controller';
+import type { GitLabRepositoryService } from '@core/features/repository/node/gitlab-repository-service';
 import { createRepositoryWireController } from '@core/features/repository/node/wire-controller';
 import type { SearchService } from '@core/features/search/node/search-service';
 import { createSearchWireController } from '@core/features/search/node/wire-controller';
@@ -69,6 +70,8 @@ import {
   createUpdatesWireController,
   type UpdateOperations,
 } from '@core/features/updates/node/wire-controller';
+import type { UsageOverviewSource } from '@core/features/usage/node/usage-overview';
+import { createUsageWireController } from '@core/features/usage/node/wire-controller';
 import {
   createDesktopHostWireController,
   type DesktopHostControllerOperations,
@@ -95,6 +98,7 @@ import type { AppDb } from '@core/services/app-db/node/db';
 import type { TerminalFileSources } from '@core/services/attachments/node/prepare-terminal-files';
 import type { HostAvailabilityService } from '@core/services/hosts/node/availability';
 import type { Hosts } from '@core/services/hosts/node/hosts';
+import { hostSupportsLsp } from '@core/services/hosts/node/lsp-capability';
 import { createHostsWireController } from '@core/services/hosts/node/wire-controller';
 import {
   createLoggingWireController,
@@ -128,6 +132,7 @@ export type DesktopControllerContext = {
   readonly devPerfOperations: DevPerfOperations;
   readonly editorBuffer: EditorBufferService;
   readonly github: Omit<Parameters<typeof createGithubWireController>[0], 'logger'>;
+  readonly gitlabRepositories: GitLabRepositoryService;
   readonly gitCredentials: GitCredentialsService;
   readonly hostAvailability: HostAvailabilityService;
   readonly hostIsReachable: HostReachabilityProbe;
@@ -162,6 +167,7 @@ export type DesktopControllerContext = {
   readonly terminalFileSources: TerminalFileSources;
   readonly terminalShell: CreateTerminalsWireControllerOptions['terminalShell'];
   readonly updateOperations: UpdateOperations;
+  readonly usage: UsageOverviewSource;
   readonly workspaceIdentity: WorkspaceIdentityService;
   readonly workspacePlacement: WorkspacePlacementResolver;
   readonly workspaces: Omit<CreateWorkspacesWireControllerOptions, 'db' | 'mutations'>;
@@ -206,7 +212,12 @@ export const desktopNodeControllers = {
       createDevPerfWireController(devPerfOperations, logger),
   },
   editor: {
-    create: ({ editorBuffer }) => createEditorWireController({ editorBuffer }),
+    create: ({ editorBuffer, runtimes, hosts }) =>
+      createEditorWireController({
+        editorBuffer,
+        runtimes,
+        isSupported: (host) => hostSupportsLsp(host, hosts),
+      }),
   },
   files: {
     create: ({ runtimes }) => createFilesWireController({ runtimes }),
@@ -241,10 +252,11 @@ export const desktopNodeControllers = {
     create: ({ promptLibrary }) => createPromptLibraryWireController(promptLibrary),
   },
   repository: {
-    create: ({ db, projects }) =>
+    create: ({ db, projects, gitlabRepositories }) =>
       createRepositoryWireController({
         projects,
         loadProject: (projectId) => getProjectById(db, projectId),
+        gitlab: gitlabRepositories,
       }),
   },
   search: {
@@ -432,6 +444,9 @@ export const desktopNodeControllers = {
   },
   ssh: {
     create: ({ ssh }) => createSshWireController(ssh.ssh, ssh.connections),
+  },
+  usage: {
+    create: ({ scope, usage }) => createUsageWireController({ scope, usage }),
   },
   hosts: {
     create: ({ hostAvailability, hosts, ssh }) =>
