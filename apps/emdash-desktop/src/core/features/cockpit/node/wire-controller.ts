@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import path from 'node:path';
 import type { ClaudeUsageScan, CodexUsageScan } from '@emdash/core/services/usage/node';
 import { ClaudeUsageReader, CodexUsageReader } from '@emdash/core/services/usage/node';
 import { err, ok } from '@emdash/shared';
@@ -14,6 +16,7 @@ import { cockpitContract, type UsageProviderId } from '../api/contract';
 import { toLinkedAccount } from './account-linking';
 import { ensureSeededAccounts } from './account-seeding';
 import { resolveClaudeOauthUsage } from './claude-oauth-usage';
+import { CodexAccountUsageClient } from './codex-account-usage';
 import { buildUsageSnapshot, startOfLocalDay, type UsageAccountScan } from './usage-snapshot';
 
 type AnyUsageScan = ClaudeUsageScan | CodexUsageScan;
@@ -21,7 +24,8 @@ type AnyUsageReader = { scan(sinceMs: number): Promise<AnyUsageScan> };
 
 export function createCockpitWireController(
   logger: Logger,
-  accountStore: ProviderAccountStore
+  accountStore: ProviderAccountStore,
+  codexUsageClient: Pick<CodexAccountUsageClient, 'getUsage'> = new CodexAccountUsageClient()
 ): Controller {
   // Runs once per wire-controller lifetime (effectively at app bootstrap).
   // Never blocks controller creation — every handler below awaits this
@@ -53,7 +57,7 @@ export function createCockpitWireController(
     return Promise.all(
       accounts.map(async (account): Promise<UsageAccountScan<TScan>> => {
         const configDirPath = account.meta?.configDirPath ?? '';
-        const label = account.meta?.label ?? account.meta?.fallbackDisplayName ?? account.accountId;
+        const label = toLinkedAccount(account).label;
         const scan = await scanOrNull<TScan>(
           configDirPath,
           () =>
@@ -74,12 +78,87 @@ export function createCockpitWireController(
         accountStore.listAccounts('claude'),
         accountStore.listAccounts('codex'),
       ]);
-      const [claude, codex, claudeOauthUsage] = await Promise.all([
+      const [claude, codex, claudeOauthUsage, codexLive] = await Promise.all([
         scanAccounts<ClaudeUsageScan>('claude', claudeAccounts, since),
         scanAccounts<CodexUsageScan>('codex', codexAccounts, since),
         resolveClaudeOauthUsage(claudeAccounts, now),
+        Promise.all(
+          codexAccounts.map(async (account) => {
+            const home = account.meta?.configDirPath;
+            return home && existsSync(path.join(home, 'auth.json'))
+              ? codexUsageClient.getUsage(home, now)
+              : null;
+          })
+        ),
       ]);
-      return buildUsageSnapshot({ claude, codex, claudeOauthUsage, now });
+      // Symlinked history cannot be attributed to either login. Show it once,
+      // explicitly as shared local usage, and never use it as per-account limits.
+      const roots = await Promise.all(
+        codexAccounts.map(async (account) => {
+          try {
+            return await realpath(path.join(account.meta?.configDirPath ?? '', 'sessions'));
+          } catch {
+            return null;
+          }
+        })
+      );
+      const shared = roots.map(
+        (root) => root !== null && roots.filter((candidate) => candidate === root).length > 1
+      );
+      const scans = codex.map((account, index) =>
+        shared[index] && roots.indexOf(roots[index]) !== index
+          ? { ...account, scan: account.scan ? { sessions: [], latestRateLimits: null } : null }
+          : account
+      );
+      const snapshot = buildUsageSnapshot({ claude, codex: scans, claudeOauthUsage, now });
+      for (const provider of snapshot.providers) {
+        const stored = provider.providerId === 'claude' ? claudeAccounts : codexAccounts;
+        for (const [index, account] of provider.accounts.entries()) {
+          account.rateLimits = { ...account.rateLimits };
+          const identity = toLinkedAccount(stored[index]);
+          account.email = identity.email;
+          account.plan = identity.plan;
+          if (provider.providerId === 'codex') {
+            const live = codexLive[index];
+            if (live) {
+              account.email = live.email ?? account.email;
+              account.plan = live.plan ?? account.plan;
+              account.label = account.email ?? account.label;
+              account.rateLimits = live.rateLimits;
+              account.usageAllowed = live.usageAllowed;
+              account.blockedReason = live.blockedReason;
+              if (!live.rateLimits.fiveHour && live.rateLimits.weekly)
+                account.rateLimits.note =
+                  'El proveedor no informa una ventana de 5h para esta cuenta.';
+            } else if (shared[index]) {
+              account.rateLimits = {
+                source: 'unavailable',
+                fiveHour: null,
+                weekly: null,
+                stale: false,
+                note: 'No se pudieron consultar los límites de esta cuenta. El historial compartido no identifica su cuota.',
+              };
+            } else {
+              account.rateLimits.stale = true;
+              account.rateLimits.note =
+                'Último límite registrado localmente; no pudimos consultar el estado actual.';
+            }
+            if (shared[index])
+              account.usageNote =
+                roots.indexOf(roots[index]) === index
+                  ? 'Historial local compartido entre cuentas: estos tokens no se pueden atribuir a este mail. Se muestran una sola vez.'
+                  : 'Comparte el historial local con la otra cuenta. Sus tokens se muestran allí una sola vez; los límites sí se consultan por separado.';
+          } else if (!claudeOauthUsage.has(account.accountId)) {
+            account.rateLimits.note = stored[index].meta?.oauthUsageEnabled
+              ? 'No pudimos consultar Claude. Revisá el inicio de sesión y volvé a actualizar.'
+              : 'La consulta de límites de Claude está desactivada. Activala en Cuentas vinculadas.';
+          } else {
+            account.rateLimits.origin = 'live';
+            account.rateLimits.observedAt = claudeOauthUsage.get(account.accountId)?.fetchedAt;
+          }
+        }
+      }
+      return snapshot;
     },
 
     linkedAccounts: async () => {

@@ -33,7 +33,7 @@ export function UsageSection({ usage }: { usage: DashboardUsage }) {
           <p className="text-sm text-foreground-muted">
             {usage.availability === 'partial'
               ? 'Solo encontramos datos locales de uno de los proveedores.'
-              : 'Lecturas locales exactas de cada proveedor; el costo estimado usa una tabla de precios cuando el proveedor no lo informa.'}
+              : 'Límites consultados por cuenta y tokens registrados localmente. El historial compartido se indica por separado; el costo puede ser estimado.'}
           </p>
         </div>
       </div>

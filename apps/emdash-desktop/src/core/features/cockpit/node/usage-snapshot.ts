@@ -208,6 +208,21 @@ function buildCodexAccount(
   const todaySessions = account.scan.sessions.filter((s) => isActiveToday(s, startOfDay));
   const modelsToday = mergeModelBreakdowns(
     todaySessions.flatMap((session) => {
+      if (session.modelsToday)
+        return session.modelsToday.map((usage) => {
+          const costUsd = estimateCostUsd(usage.model, {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+          });
+          return {
+            model: usage.model,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheTokens: usage.cachedInputTokens,
+            costUsd,
+            costSource: (costUsd === null ? 'unavailable' : 'estimated') as UsageValueSource,
+          };
+        });
       if (!session.tokens || !session.model) return [];
       const cacheTokens = session.tokens.cachedInputTokens;
       const costUsd = estimateCostUsd(session.model, {
@@ -257,7 +272,16 @@ function codexSessionRow(
   session: CodexSessionUsage,
   account: UsageAccountScan<CodexUsageScan>
 ): UsageSessionRow {
-  const tokens = session.tokens;
+  const tokens = session.modelsToday
+    ? session.modelsToday.reduce(
+        (sum, model) => ({
+          inputTokens: sum.inputTokens + model.inputTokens,
+          outputTokens: sum.outputTokens + model.outputTokens,
+          cachedInputTokens: sum.cachedInputTokens + model.cachedInputTokens,
+        }),
+        { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 }
+      )
+    : session.tokens;
   const costUsd =
     tokens && session.model
       ? estimateCostUsd(session.model, {

@@ -156,9 +156,9 @@ export const CockpitMainPanel = observer(function CockpitMainPanel() {
           <ActiveAgentsList agents={dashboard.activeAgents} onOpen={openAgent} />
         </section>
 
-        <UsageSection usage={dashboard.usage} />
-
         <UsageAccountsSection />
+
+        <UsageSection usage={dashboard.usage} />
 
         {projects.length === 0 ? (
           <EmptyState

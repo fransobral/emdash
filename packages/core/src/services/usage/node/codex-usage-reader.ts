@@ -39,6 +39,8 @@ export type CodexSessionUsage = Readonly<{
   /** Best-effort: the most recent model seen on a `turn_context` event for this session. */
   model: string | null;
   tokens: CodexTokenTotals | null;
+  /** Deltas within the requested scan window, grouped by the model active at each event. */
+  modelsToday?: readonly (CodexTokenTotals & { model: string })[];
 }>;
 
 /** One rate-limit window, classified by its duration rather than its slot name. */
@@ -73,6 +75,7 @@ type FileAggregate = {
   model: string | null;
   tokens: CodexTokenTotals | null;
   rateLimits: CodexRateLimits | null;
+  modelsToday: Map<string, CodexTokenTotals>;
 };
 
 type CacheEntry = {
@@ -90,6 +93,7 @@ function emptyAggregate(): FileAggregate {
     model: null,
     tokens: null,
     rateLimits: null,
+    modelsToday: new Map(),
   };
 }
 
@@ -109,10 +113,15 @@ function numberOr0(value: unknown): number {
  */
 export class CodexUsageReader {
   private readonly cache = new Map<string, CacheEntry>();
+  private sinceMs: number | null = null;
 
   constructor(private readonly configDir: string) {}
 
   async scan(sinceMs: number): Promise<CodexUsageScan> {
+    if (this.sinceMs !== sinceMs) {
+      this.cache.clear();
+      this.sinceMs = sinceMs;
+    }
     const pattern = path.join(this.configDir, 'sessions', '**', 'rollout-*.jsonl');
     const files: string[] = [];
     try {
@@ -161,9 +170,9 @@ export class CodexUsageReader {
     const cached = this.cache.get(file);
     if (cached && cached.mtimeMs === stats.mtimeMs) return cached.aggregate;
 
-    const aggregate = cached ? cached.aggregate : emptyAggregate();
+    const aggregate = cached && stats.size >= cached.offset ? cached.aggregate : emptyAggregate();
     const startOffset = cached && stats.size >= cached.offset ? cached.offset : 0;
-    const nextOffset = await appendLinesFromOffset(file, startOffset, aggregate);
+    const nextOffset = await appendLinesFromOffset(file, startOffset, aggregate, sinceMs);
     this.cache.set(file, { mtimeMs: stats.mtimeMs, offset: nextOffset, aggregate });
     return aggregate;
   }
@@ -172,7 +181,8 @@ export class CodexUsageReader {
 async function appendLinesFromOffset(
   file: string,
   offset: number,
-  aggregate: FileAggregate
+  aggregate: FileAggregate,
+  sinceMs: number
 ): Promise<number> {
   const handle = await open(file, 'r');
   try {
@@ -187,7 +197,7 @@ async function appendLinesFromOffset(
     let consumed = 0;
     for (const line of lines) {
       consumed += Buffer.byteLength(line, 'utf8') + 1;
-      if (line.trim().length > 0) applyLine(aggregate, line);
+      if (line.trim().length > 0) applyLine(aggregate, line, sinceMs);
     }
     return offset + consumed;
   } finally {
@@ -195,7 +205,7 @@ async function appendLinesFromOffset(
   }
 }
 
-function applyLine(aggregate: FileAggregate, line: string): void {
+function applyLine(aggregate: FileAggregate, line: string, sinceMs: number): void {
   let parsed: unknown;
   try {
     parsed = JSON.parse(line);
@@ -219,11 +229,11 @@ function applyLine(aggregate: FileAggregate, line: string): void {
     case 'token_usage_record':
       if (typeof payload.session_id === 'string') aggregate.sessionId = payload.session_id;
       if (isRecord(payload.thread_token_usage)) {
-        aggregate.tokens = toTokenTotals(payload.thread_token_usage);
+        applyTokens(aggregate, toTokenTotals(payload.thread_token_usage), lineTimestamp, sinceMs);
       }
       break;
     case 'event_msg':
-      applyEventMsg(aggregate, payload, lineTimestamp);
+      applyEventMsg(aggregate, payload, lineTimestamp, sinceMs);
       break;
     default:
       break;
@@ -233,11 +243,12 @@ function applyLine(aggregate: FileAggregate, line: string): void {
 function applyEventMsg(
   aggregate: FileAggregate,
   payload: Record<string, unknown>,
-  lineTimestamp: number
+  lineTimestamp: number,
+  sinceMs: number
 ): void {
   if (payload.type !== 'token_count') return;
   if (isRecord(payload.info) && isRecord(payload.info.total_token_usage)) {
-    aggregate.tokens = toTokenTotals(payload.info.total_token_usage);
+    applyTokens(aggregate, toTokenTotals(payload.info.total_token_usage), lineTimestamp, sinceMs);
   }
   if (isRecord(payload.rate_limits)) {
     aggregate.rateLimits = toRateLimits(
@@ -246,6 +257,37 @@ function applyEventMsg(
       aggregate.lastActivityAt
     );
   }
+}
+
+function applyTokens(
+  aggregate: FileAggregate,
+  tokens: CodexTokenTotals,
+  timestamp: number,
+  sinceMs: number
+): void {
+  const previous = aggregate.tokens;
+  aggregate.tokens = tokens;
+  if (!aggregate.model || !Number.isFinite(timestamp) || timestamp < sinceMs) return;
+  const totals = {
+    ...(aggregate.modelsToday.get(aggregate.model) ?? {
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningOutputTokens: 0,
+      totalTokens: 0,
+    }),
+  };
+  for (const key of [
+    'inputTokens',
+    'cachedInputTokens',
+    'outputTokens',
+    'reasoningOutputTokens',
+    'totalTokens',
+  ] as const) {
+    const old = previous?.[key] ?? 0;
+    totals[key] += tokens[key] >= old ? tokens[key] - old : tokens[key];
+  }
+  aggregate.modelsToday.set(aggregate.model, totals);
 }
 
 function toTokenTotals(raw: Record<string, unknown>): CodexTokenTotals {
@@ -299,5 +341,6 @@ function toSessionUsage(file: string, aggregate: FileAggregate): CodexSessionUsa
     lastActivityAt: aggregate.lastActivityAt,
     model: aggregate.model,
     tokens: aggregate.tokens,
+    modelsToday: [...aggregate.modelsToday].map(([model, tokens]) => ({ model, ...tokens })),
   };
 }
