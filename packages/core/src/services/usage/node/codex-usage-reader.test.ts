@@ -82,6 +82,36 @@ function tokenUsageRecord(opts: {
 }
 
 describe('CodexUsageReader', () => {
+  it('counts only today’s deltas and attributes each delta to its actual model', async () => {
+    const since = Date.now() - 60_000;
+    await writeRolloutFile('daily', [
+      turnContext({ timestamp: new Date(since - 1000).toISOString(), model: 'old-model' }),
+      tokenCountEvent({
+        timestamp: new Date(since - 1000).toISOString(),
+        total: { input: 1000, output: 100 },
+      }),
+      turnContext({ timestamp: new Date(since + 1000).toISOString(), model: 'model-a' }),
+      tokenCountEvent({
+        timestamp: new Date(since + 1000).toISOString(),
+        total: { input: 1100, output: 110 },
+      }),
+      turnContext({ timestamp: new Date(since + 2000).toISOString(), model: 'model-b' }),
+      tokenCountEvent({
+        timestamp: new Date(since + 2000).toISOString(),
+        total: { input: 1300, output: 130 },
+      }),
+    ]);
+    const reader = new CodexUsageReader(configDir);
+    const result = await reader.scan(since);
+    expect(result.sessions[0].modelsToday).toEqual([
+      expect.objectContaining({ model: 'model-a', inputTokens: 100, outputTokens: 10 }),
+      expect.objectContaining({ model: 'model-b', inputTokens: 200, outputTokens: 20 }),
+    ]);
+    const nextDay = await reader.scan(since + 1500);
+    expect(nextDay.sessions[0].modelsToday).toEqual([
+      expect.objectContaining({ model: 'model-b', inputTokens: 200, outputTokens: 20 }),
+    ]);
+  });
   it('reads cumulative tokens and model from a session_meta + turn_context + token_count rollout', async () => {
     const now = Date.now();
     const iso = new Date(now).toISOString();

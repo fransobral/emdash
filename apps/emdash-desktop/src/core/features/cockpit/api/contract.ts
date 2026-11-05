@@ -42,6 +42,9 @@ export const usageRateLimitsSchema = z.object({
   weekly: usageRateLimitWindowSchema.nullable(),
   /** True when these numbers are a cached last-known value, not a fresh read (e.g. Claude's opt-in OAuth endpoint backing off after a 429/5xx). */
   stale: z.boolean(),
+  observedAt: z.number().optional(),
+  origin: z.enum(['live', 'local']).optional(),
+  note: z.string().optional(),
 });
 export type UsageRateLimits = z.infer<typeof usageRateLimitsSchema>;
 
@@ -49,6 +52,11 @@ export const usageAccountSchema = z.object({
   accountId: z.string(),
   label: z.string(),
   isDefault: z.boolean(),
+  email: z.string().nullable().optional(),
+  plan: z.string().nullable().optional(),
+  usageNote: z.string().optional(),
+  usageAllowed: z.boolean().nullable().optional(),
+  blockedReason: z.string().nullable().optional(),
   rateLimits: usageRateLimitsSchema,
   modelsToday: z.array(usageModelBreakdownSchema),
   costTodayUsd: z.number().nullable(),
@@ -106,6 +114,8 @@ export const usageLinkedAccountSchema = z.object({
   configDirPath: z.string(),
   isDefault: z.boolean(),
   credentialStatus: usageAccountCredentialStatusSchema,
+  email: z.string().nullable().optional(),
+  plan: z.string().nullable().optional(),
   /** Opt-in (default false), Claude-only: see `setUsageOauthEnabled`. */
   oauthUsageEnabled: z.boolean(),
 });

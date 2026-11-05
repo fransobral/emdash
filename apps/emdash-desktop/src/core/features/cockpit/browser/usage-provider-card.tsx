@@ -31,7 +31,17 @@ function UsageAccountCard({ account }: { account: UsageAccount }) {
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">{account.label}</span>
         {account.isDefault && <Badge variant="outline">predeterminada</Badge>}
+        {account.plan && <Badge variant="outline">{account.plan}</Badge>}
       </div>
+      {account.usageAllowed === false ? (
+        <p className="text-xs text-foreground-error">
+          {account.blockedReason === 'workspace_owner_credits_depleted'
+            ? 'El workspace de esta cuenta se quedó sin créditos.'
+            : 'Esta cuenta alcanzó un límite de uso.'}
+        </p>
+      ) : account.usageAllowed === true ? (
+        <p className="text-xs text-foreground-muted">Uso incluido disponible</p>
+      ) : null}
       <UsageLimitBar
         label="5h"
         usedPercent={account.rateLimits.fiveHour?.usedPercent ?? null}
@@ -44,6 +54,16 @@ function UsageAccountCard({ account }: { account: UsageAccount }) {
         resetsAt={account.rateLimits.weekly?.resetsAt}
         stale={account.rateLimits.stale}
       />
+      {account.rateLimits.note && (
+        <p className="text-xs text-foreground-muted">{account.rateLimits.note}</p>
+      )}
+      {account.rateLimits.observedAt && (
+        <p className="text-xs text-foreground-passive">
+          {account.rateLimits.origin === 'live' ? 'Consultado al proveedor' : 'Registro local'}:{' '}
+          {new Date(account.rateLimits.observedAt).toLocaleString()}
+        </p>
+      )}
+      {account.usageNote && <p className="text-xs text-foreground-muted">{account.usageNote}</p>}
       <ModelsTodaySummary account={account} />
     </div>
   );
@@ -51,7 +71,9 @@ function UsageAccountCard({ account }: { account: UsageAccount }) {
 
 function ModelsTodaySummary({ account }: { account: UsageAccount }) {
   if (account.modelsToday.length === 0) {
-    return <p className="text-xs text-foreground-muted">Sin uso hoy.</p>;
+    return account.usageNote ? null : (
+      <p className="text-xs text-foreground-muted">Sin uso local registrado hoy.</p>
+    );
   }
 
   const byModel = account.modelsToday

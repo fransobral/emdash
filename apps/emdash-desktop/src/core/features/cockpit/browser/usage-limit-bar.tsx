@@ -17,7 +17,12 @@ function fillColor(tone: 'success' | 'warning' | 'error'): string {
 
 function formatResetTime(resetsAt: number | null): string | null {
   if (resetsAt === null) return null;
-  return new Date(resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(resetsAt).toLocaleString([], {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 /** One rate-limit window bar (5h or weekly), or a "no disponible" placeholder. */

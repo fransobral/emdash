@@ -53,12 +53,14 @@ describe('resolveAgentAccountEnv', () => {
     expect(await resolveAgentAccountEnv(store, 'github', 'some-account')).toEqual({});
   });
 
-  it('returns an empty object for the default account', async () => {
+  it('pins an explicitly selected default account instead of silently using a fallback', async () => {
     const store = fakeStore({
       codex: [account('codex', 'default', { isDefault: true, home: '/home/.codex' })],
       claude: [],
     });
-    expect(await resolveAgentAccountEnv(store, 'codex', 'default')).toEqual({});
+    expect(await resolveAgentAccountEnv(store, 'codex', 'default')).toEqual({
+      CODEX_HOME: '/home/.codex',
+    });
   });
 
   it('maps a non-default codex account to CODEX_HOME', async () => {

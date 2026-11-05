@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { noopLogger } from '@emdash/shared/logger';
@@ -106,6 +106,51 @@ afterEach(async () => {
 });
 
 describe('createCockpitWireController usageSnapshot', () => {
+  it('separates live account quotas while showing symlinked history only once', async () => {
+    const backup = path.join(codexHome, 'backup');
+    await mkdir(path.join(codexHome, 'sessions'), { recursive: true });
+    await mkdir(backup);
+    await symlink(path.join(codexHome, 'sessions'), path.join(backup, 'sessions'), 'dir');
+    await writeFile(path.join(codexHome, 'auth.json'), '{}');
+    await writeFile(path.join(backup, 'auth.json'), '{}');
+    await store.upsertAccount({
+      providerId: 'codex',
+      accountId: 'fallback',
+      meta: { label: 'Respaldo', configDirPath: backup },
+    });
+    const controller = createCockpitWireController(noopLogger, store, {
+      getUsage: async (home) => ({
+        email: home === backup ? 'team@example.com' : 'pro@example.com',
+        plan: home === backup ? 'team' : 'pro',
+        usageAllowed: home !== backup,
+        blockedReason: home === backup ? 'workspace_owner_credits_depleted' : null,
+        rateLimits: {
+          source: 'exact',
+          fiveHour: null,
+          weekly: { usedPercent: home === backup ? 70 : 1, resetsAt: null },
+          stale: false,
+        },
+      }),
+    });
+    const snapshot = usageSnapshotSchema.parse(await controller.call('usageSnapshot', undefined));
+    const accounts = snapshot.providers.find(
+      (provider) => provider.providerId === 'codex'
+    )?.accounts;
+    expect(accounts?.map((account) => account.label)).toEqual([
+      'pro@example.com',
+      'team@example.com',
+    ]);
+    expect(accounts?.map((account) => account.rateLimits.weekly?.usedPercent)).toEqual([1, 70]);
+    expect(accounts?.[1]).toMatchObject({
+      usageAllowed: false,
+      modelsToday: [],
+      usageNote: expect.stringContaining('una sola vez'),
+    });
+    expect(
+      snapshot.providers.find((provider) => provider.providerId === 'claude')?.accounts[0]
+        .rateLimits.stale
+    ).toBe(false);
+  });
   it('reports exact when both linked accounts config dirs are empty but present', async () => {
     const controller = createCockpitWireController(noopLogger, store);
     const snapshot = usageSnapshotSchema.parse(await controller.call('usageSnapshot', undefined));
@@ -286,7 +331,7 @@ describe('createCockpitWireController setUsageOauthEnabled', () => {
     const controller = createCockpitWireController(noopLogger, store);
     const snapshot = usageSnapshotSchema.parse(await controller.call('usageSnapshot', undefined));
     const claudeAccount = snapshot.providers.find((p) => p.providerId === 'claude')?.accounts[0];
-    expect(claudeAccount?.rateLimits).toEqual({
+    expect(claudeAccount?.rateLimits).toMatchObject({
       source: 'unavailable',
       fiveHour: null,
       weekly: null,

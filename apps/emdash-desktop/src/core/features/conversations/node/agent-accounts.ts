@@ -7,6 +7,7 @@ import {
   type AgentAccountsByProvider,
 } from '@core/primitives/conversations/api/agent-accounts';
 import type { ProviderAccountStore } from '@core/services/provider-accounts/api/provider-account-store';
+import { readCliAccountIdentity } from '@core/services/provider-accounts/node/cli-account-identity';
 
 const PROVIDER_IDS: AgentAccountProviderId[] = ['codex', 'claude'];
 
@@ -47,6 +48,7 @@ export async function listAgentAccounts(
       return {
         id: account.accountId,
         label:
+          readCliAccountIdentity(providerId, configDirPath ?? '').email ??
           account.meta?.label ??
           account.meta?.fallbackDisplayName ??
           `${PROVIDER_LABELS[providerId]} ${index + 1}`,
@@ -67,8 +69,8 @@ const CONFIG_DIR_ENV_VAR: Record<AgentAccountProviderId, string> = {
 /**
  * Resolves the env override for a conversation's selected agent account. Returns an empty
  * object when no account is selected, the provider doesn't support accounts, the account no
- * longer exists, or the account is the provider's default — the default account needs no
- * override since it's already what the CLI uses without one.
+ * longer exists. An explicit selection pins even the default account so a previous
+ * usage-limit fallback cannot silently override the user's chosen login.
  */
 export async function resolveAgentAccountEnv(
   store: ProviderAccountStore,
@@ -77,7 +79,7 @@ export async function resolveAgentAccountEnv(
 ): Promise<Record<string, string>> {
   if (!accountId || !isAgentAccountProviderId(providerId)) return {};
   const account = await store.getAccount(providerId, accountId);
-  if (!account || account.isDefault) return {};
+  if (!account) return {};
   const configDirPath = account.meta?.configDirPath;
   if (!configDirPath) return {};
   return { [CONFIG_DIR_ENV_VAR[providerId]]: configDirPath };

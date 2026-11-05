@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { ProviderAccount } from '@core/services/provider-accounts/api/provider-account-store';
+import { readCliAccountIdentity } from '@core/services/provider-accounts/node/cli-account-identity';
 import type { UsageLinkedAccount, UsageProviderId } from '../api/contract';
 
 const CREDENTIAL_FILENAMES: Record<UsageProviderId, string> = {
@@ -29,10 +30,16 @@ export function toLinkedAccount(
 ): UsageLinkedAccount {
   const providerId = account.providerId as UsageProviderId;
   const configDirPath = account.meta?.configDirPath ?? '';
+  const identity = readCliAccountIdentity(providerId, configDirPath);
   return {
     providerId,
     accountId: account.accountId,
-    label: account.meta?.label ?? account.meta?.fallbackDisplayName ?? account.accountId,
+    label:
+      identity.email ??
+      account.meta?.label ??
+      account.meta?.fallbackDisplayName ??
+      account.accountId,
+    ...identity,
     configDirPath,
     isDefault: account.isDefault,
     credentialStatus: hasLinkedCredential(providerId, configDirPath, fsExists)

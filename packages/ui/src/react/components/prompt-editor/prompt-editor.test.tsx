@@ -7,29 +7,39 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PromptEditor } from './prompt-editor';
 import type { MentionItem, PromptEditorRef } from './types';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('PromptEditor', () => {
-  it('keeps the Chat submit and clear behavior by default', async () => {
-    const editorRef = createRef<PromptEditorRef>();
-    const onSubmit = vi.fn();
-    const { getByTestId } = render(<PromptEditor ref={editorRef} onSubmit={onSubmit} />);
-    await waitFor(() => expect(editorRef.current).not.toBeNull());
-    act(() => editorRef.current?.setText('Draft prompt'));
+  it.each([false, true])(
+    'keeps Enter to submit and Shift+Enter for a newline (touch: %s)',
+    async (touch) => {
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn((query: string) => ({ matches: touch && query === '(pointer: coarse)' }))
+      );
+      const editorRef = createRef<PromptEditorRef>();
+      const onSubmit = vi.fn();
+      const { getByTestId } = render(<PromptEditor ref={editorRef} onSubmit={onSubmit} />);
+      await waitFor(() => expect(editorRef.current).not.toBeNull());
+      act(() => editorRef.current?.setText('Draft prompt'));
 
-    const editor = getByTestId('prompt-editor');
-    fireEvent.keyDown(editor, { key: 'Enter', shiftKey: true });
+      const editor = getByTestId('prompt-editor');
+      fireEvent.keyDown(editor, { key: 'Enter', shiftKey: true });
 
-    expect(onSubmit).not.toHaveBeenCalled();
-    expect(editor.querySelector('br:not(.ProseMirror-trailingBreak)')).not.toBeNull();
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(editor.querySelector('br:not(.ProseMirror-trailingBreak)')).not.toBeNull();
 
-    act(() => editorRef.current?.setText('Draft prompt'));
-    fireEvent.keyDown(editor, { key: 'Enter' });
+      act(() => editorRef.current?.setText('Draft prompt'));
+      fireEvent.keyDown(editor, { key: 'Enter' });
 
-    expect(onSubmit).toHaveBeenCalledOnce();
-    expect(onSubmit).toHaveBeenCalledWith('Draft prompt');
-    expect(editorRef.current?.getText()).toBe('');
-  });
+      expect(onSubmit).toHaveBeenCalledOnce();
+      expect(onSubmit).toHaveBeenCalledWith('Draft prompt');
+      expect(editorRef.current?.getText()).toBe('');
+    }
+  );
 
   it('reconciles controlled serialized values without echoing them as changes', async () => {
     const editorRef = createRef<PromptEditorRef>();

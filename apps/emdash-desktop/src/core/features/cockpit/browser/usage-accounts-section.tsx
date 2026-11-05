@@ -1,6 +1,8 @@
 import { Badge, Button, Switch } from '@emdash/ui/react/primitives';
+import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { AGENT_ACCOUNTS_QUERY_KEY } from '@core/features/conversations/api/browser/use-agent-accounts';
 import { useOpenModal } from '@core/manifests/browser/modal-api';
 import type { UsageLinkedAccount, UsageProviderId } from '../api';
 import { getCockpitClient } from '../api/browser/client';
@@ -19,19 +21,27 @@ function accountKey(account: Pick<UsageLinkedAccount, 'providerId' | 'accountId'
  * config directory and shows the command the user runs on their own.
  */
 export function UsageAccountsSection() {
+  const queryClient = useQueryClient();
   const [accounts, setAccounts] = useState<UsageLinkedAccount[] | null>(null);
   const [renamingKey, setRenamingKey] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const openLinkModal = useOpenModal('linkUsageAccountModal');
 
-  async function refresh(): Promise<void> {
-    const client = await getCockpitClient();
-    setAccounts(await client.linkedAccounts());
-  }
+  const refresh = useCallback(async (): Promise<void> => {
+    try {
+      const client = await getCockpitClient();
+      setAccounts(await client.linkedAccounts());
+      void queryClient.invalidateQueries({ queryKey: AGENT_ACCOUNTS_QUERY_KEY });
+      setError(null);
+    } catch {
+      setError('No pudimos cargar las cuentas. Volvé a actualizar.');
+    }
+  }, [queryClient]);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   async function handleAdd(): Promise<void> {
     const outcome = await openLinkModal();
@@ -74,21 +84,32 @@ export function UsageAccountsSection() {
     void refresh();
   }
 
-  // First paint, before the initial fetch resolves: render nothing rather
-  // than an empty-state flash that would immediately be replaced.
-  if (accounts === null) return null;
-
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border bg-background-1 p-4">
       <div className="flex items-center justify-between">
         <h2 className="font-medium">Cuentas vinculadas</h2>
-        <Button type="button" variant="secondary" size="xs" onClick={() => void handleAdd()}>
-          <Plus className="size-3" />
-          Agregar cuenta
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="ghost" size="xs" onClick={() => void refresh()}>
+            Actualizar
+          </Button>
+          <Button type="button" variant="secondary" size="xs" onClick={() => void handleAdd()}>
+            <Plus className="size-3" />
+            Agregar cuenta
+          </Button>
+        </div>
       </div>
-
-      {accounts.length === 0 ? (
+      <p className="text-xs text-foreground-muted">
+        Elegí el mail en Account al crear una conversación nueva. Cada cuenta usa su propia carpeta
+        de configuración.
+      </p>
+      {error ? (
+        <p role="alert" className="text-sm text-foreground-error">
+          {error}
+        </p>
+      ) : null}
+      {accounts === null ? (
+        <p className="text-sm text-foreground-muted">Cargando cuentas…</p>
+      ) : accounts.length === 0 ? (
         <p className="text-sm text-foreground-muted">Sin cuentas vinculadas.</p>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -118,6 +139,7 @@ export function UsageAccountsSection() {
                       <span className="truncate text-sm font-medium">{account.label}</span>
                     )}
                     {account.isDefault && <Badge tone="info">predeterminada</Badge>}
+                    {account.plan && <Badge variant="outline">{account.plan}</Badge>}
                     <Badge tone={account.credentialStatus === 'linked' ? 'success' : 'warning'}>
                       {account.credentialStatus === 'linked' ? 'Vinculada' : 'Pendiente'}
                     </Badge>

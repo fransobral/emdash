@@ -46,6 +46,8 @@ describe('toLinkedAccount', () => {
       isDefault: true,
       credentialStatus: 'linked',
       oauthUsageEnabled: false,
+      email: null,
+      plan: null,
     });
   });
 
